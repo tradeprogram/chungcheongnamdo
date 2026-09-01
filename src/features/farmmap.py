@@ -13,6 +13,13 @@ docs/40_experiments.md 참조.
             "요청서버의 도메인과 등록하신 도메인 정보가 다릅니다" 로 거부된다.
     둘 다 .env 에 둔다 (.env 는 git 에서 제외).
 
+    호출 주체는 배포된 웹 UI가 아니라 로컬 수집 스크립트다. 수집은 서버 사이드에서 끝나고
+    WebGIS는 산출된 GeoParquet만 읽으므로, 수집용 키는 localhost로 등록하면 된다.
+    배포 도메인이 정해지면 별도 키를 발급한다 (키는 최대 3개).
+
+    서버가 domain 파라미터만 대조하는지 Referer 헤더까지 보는지는 명세에 없다.
+    파라미터만으로 거부되면 send_referer=True 로 재시도한다.
+
 제약
     - 1회 요청 최대 200건 (`count`). AOI 전체는 bbox 타일 + startindex 페이징으로 훑는다.
     - EPSG:5179/4326 등은 bbox 축 순서가 **ymin,xmin,ymax,xmax** 다 (3857과 반대).
@@ -69,6 +76,15 @@ def _bbox_param(xmin: float, ymin: float, xmax: float, ymax: float) -> str:
     return f"{ymin},{xmin},{ymax},{xmax},{WORK_CRS}"
 
 
+def referer_headers(domain: str) -> dict[str, str]:
+    """등록 도메인을 Referer/Origin 으로 실어 보낸다.
+
+    팜맵 서버가 domain 파라미터 외에 요청 헤더까지 검사하는 경우에만 필요하다.
+    """
+    origin = domain if domain.startswith("http") else f"http://{domain}"
+    return {"Referer": origin + "/", "Origin": origin}
+
+
 def fetch_bbox(
     xmin: float,
     ymin: float,
@@ -78,9 +94,11 @@ def fetch_bbox(
     client: httpx.Client,
     page_limit: int = 100,
     pause_s: float = 0.2,
+    send_referer: bool = False,
 ) -> list[dict]:
     """한 bbox 안의 필지를 페이징으로 모두 가져온다."""
     features: list[dict] = []
+    headers = referer_headers(env["FARMMAP_DOMAIN"]) if send_referer else {}
     start = 0
     for _ in range(page_limit):
         params = {
@@ -98,7 +116,7 @@ def fetch_bbox(
             "apiKey": env["FARMMAP_API_KEY"],
             "domain": env["FARMMAP_DOMAIN"],
         }
-        resp = client.get(WFS_URL, params=params, timeout=90)
+        resp = client.get(WFS_URL, params=params, headers=headers, timeout=90)
         resp.raise_for_status()
         js = resp.json()
         if isinstance(js.get("status"), dict) and js["status"].get("result") == "F":
@@ -113,7 +131,13 @@ def fetch_bbox(
     return features
 
 
-def fetch_area(geom, env: dict[str, str], tile_m: float = 2000.0, pause_s: float = 0.2) -> gpd.GeoDataFrame:
+def fetch_area(
+    geom,
+    env: dict[str, str],
+    tile_m: float = 2000.0,
+    pause_s: float = 0.2,
+    send_referer: bool = False,
+) -> gpd.GeoDataFrame:
     """대상 영역을 타일로 나눠 전부 조회한다. geom 은 EPSG:5179."""
     xmin, ymin, xmax, ymax = geom.bounds
     tiles = []
@@ -131,7 +155,7 @@ def fetch_area(geom, env: dict[str, str], tile_m: float = 2000.0, pause_s: float
     rows: dict[str, dict] = {}
     with httpx.Client() as client:
         for i, t in enumerate(tiles, 1):
-            for f in fetch_bbox(*t.bounds, env=env, client=client, pause_s=pause_s):
+            for f in fetch_bbox(*t.bounds, env=env, client=client, pause_s=pause_s, send_referer=send_referer):
                 props = f.get("properties", {})
                 key = str(props.get("uid") or f.get("id"))
                 if key not in rows and f.get("geometry"):
@@ -148,6 +172,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="팜맵 WFS 조회")
     parser.add_argument("--sgg", required=True, help="시군구명 (예: 부여군). data/aoi/chungnam_sgg.geojson 기준")
     parser.add_argument("--tile", type=float, default=2000.0, help="타일 한 변 길이 (m)")
+    parser.add_argument("--referer", action="store_true", help="등록 도메인을 Referer/Origin 헤더로도 전송")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
@@ -157,7 +182,7 @@ def main() -> None:
     if match.empty:
         raise SystemExit(f"'{args.sgg}' 를 찾을 수 없습니다. 사용 가능: {list(sgg['sgg_nm'])}")
 
-    gdf = fetch_area(match.geometry.iloc[0], env, tile_m=args.tile)
+    gdf = fetch_area(match.geometry.iloc[0], env, tile_m=args.tile, send_referer=args.referer)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     gdf.to_parquet(args.out)
 
