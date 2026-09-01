@@ -8,9 +8,16 @@
 `models/flood_forecast.py`의 `train()`은 random split을 지원하지 않는다.
 
 ### Spatial holdout
-- Train: 천안·공주·보령·아산·서산·논산·계룡·당진·금산·부여·서천·청양·홍성·예산 일부
-- Test: **특정 시·군 전체**
+- 그룹 단위: **시·군 전체**를 통째로 test로 분리
 - 목적: 옆 필지를 맞히는가가 아니라, 보지 못한 시·군에도 일반화되는가
+- 대상 15개 시·군 (SGIS 시도코드 34):
+  천안시 · 공주시 · 보령시 · 아산시 · 서산시 · 논산시 · 계룡시 · 당진시 ·
+  금산군 · 부여군 · 서천군 · 청양군 · 홍성군 · 예산군 · **태안군**
+- 경계는 `src/features/aoi.py`가 생성한 `data/processed/aoi/chungnam_adm_dong.parquet`
+  (행정동 208개, EPSG:5179) 기준. 시군 배정은 `sigungu_nm`, 구 단위 분석은 `sgg_nm` 사용.
+- 천안시는 원본에서 동남구·서북구로 분리되어 시군구 코드가 16개다.
+  spatial holdout 그룹은 구가 아니라 **시** 단위(`sigungu_nm`)로 묶어야 leakage가 없다.
+- 계룡시는 행정동 4개로 표본이 매우 적다. 단독 test fold로 쓰지 말고 결과 해석 시 주의한다.
 
 ### Temporal holdout
 - Train: 과거 사건

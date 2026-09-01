@@ -129,9 +129,11 @@ chungcheongnamdo/
 
 - [ ] 2026 공모전 공고 첨부에서 **공식 심사항목·배점·제출서식** 확보 (문서에서 유일하게 미확인된 항목)
 - [ ] Golden Event 1건 확정 → `docs/10_golden_event.md` 1페이지 (시군·기간·강우·피해 공식 근거)
-- [ ] 저장소 초기화 + README에 Pitch·architecture 먼저 작성
+- [x] 저장소 초기화 + README에 Pitch·architecture 먼저 작성
+- [x] **충남 AOI 확정** — SGIS 행정동 경계에서 시도코드 34 추출, 행정동 208개 / 시군 15개,
+      `src/features/aoi.py`, 8,264.7 km²
 - [ ] Waterside Guard의 S1/S2/GEE 코드 분리 이식 → `src/rs/*.py` 실행 확인
-- [ ] 팜맵 충남 AOI 확보 → GeoParquet 변환 → 지도에 polygon 표시
+- [ ] 팜맵 충남 필지 확보 → AOI로 clip → GeoParquet 변환 → 지도에 polygon 표시
 - [ ] KMA 사건강우 ingest → event별 1h/3h/24h feature
 - [ ] DEM → slope/HAND/TWI → `field_event_features.parquet` 완성
 
