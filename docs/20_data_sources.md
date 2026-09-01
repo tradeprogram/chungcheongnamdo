@@ -6,7 +6,27 @@
 |---|---|---|---|---|---|
 | Sentinel-1 GRD VV/VH | 실제 침수 evidence, 과거 event label | Copernicus | OData 카탈로그 / GEE | P0 | **가용성 확인 완료**, 다운로드 계정 필요 |
 | Sentinel-2 L2A | 회복 anomaly (NDVI/EVI/NDMI) | Copernicus | GEE 컬렉션 | P1 | 미착수 |
-| 팜맵 | 농경지 필지 경계, 논/밭/과수/시설 속성 | 농림축산식품부 | 대국민 개방 다운로드 | P0 | 미착수 |
+| 팜맵 | 농경지 필지 경계, 논/밭/과수/시설 속성 | 농림축산식품부 / EPIS | ① 공공데이터포털 파일(SHP) ② 팜맵 WFS | P0 | 경로 확인, **미확보** |
+
+## 팜맵 확보 경로 — 두 가지, 성격이 다르다
+
+**① 공공데이터포털 파일데이터 (대량 확보용)**
+- `https://www.data.go.kr/data/15062415/fileData.do` — 시도별 SHP + 속성 CSV, 로그인 불필요
+- 파일명 규칙 `팜맵정보_CSV_시도명_시군구명_년도.csv`
+- **다만 최신 공개분이 2021년 기준이다.** Golden Event는 2025-07이므로 4년 시차가 있다.
+  논/밭 전환·경지정리·시설 신축이 반영되지 않는다. MVP에서는 한계로 명시하고 쓰되,
+  아래 WFS로 표본 대조해 변화율을 파악한다.
+
+**② 팜맵 WFS (최신·표본 검증용)** — `src/features/farmmap.py`
+- `https://agis.epis.or.kr/ASD/farmmapApi/wfs.do`
+- 인증: `apiKey` + `domain` **두 개 모두 필수.** `domain`은 키 발급 시 등록한 URL이며
+  값이 다르면 "요청서버의 도메인과 등록하신 도메인 정보가 다릅니다"로 거부된다.
+  두 값은 `.env`에 두고 git에서 제외한다 (`.env.example` 참조).
+- 1회 최대 **200건**, bbox + `startindex` 페이징. 전 충남을 이것만으로 받기에는 요청량이 크다.
+- bbox 축 순서 주의: EPSG:5179/4326은 `ymin,xmin,ymax,xmax` (EPSG:3857과 반대).
+- 제공 속성: `clsf_nm`(논/밭/과수/시설), `pnu`, `ldcg_cd`(지목), `area`, `flight_ymd`, `updt_ymd`
+
+> 팜맵 사이트 공지: **2026-09-02(수) 18:00~24:00 시스템 작업으로 서비스 일시 중단 예정.**
 | 기상 관측·예보 | 강우 1/3/6/24h, 선행강우 1/3/7d | 기상자료개방포털 | Open API | P0 | 미착수 |
 | DEM | slope, HAND, TWI, 하천거리 | 국토지리정보원 | 다운로드 | P0 | 미착수 |
 | ERA5 재분석 | **사건 window 특정 보조자료** (KMA 대체 아님) | Open-Meteo archive | API, 인증 불필요 | P2 | **확보** |
