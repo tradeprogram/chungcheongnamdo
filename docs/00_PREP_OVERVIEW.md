@@ -128,7 +128,11 @@ chungcheongnamdo/
 ## 9. 지금 바로 할 일 (P0, 순서 고정)
 
 - [ ] 2026 공모전 공고 첨부에서 **공식 심사항목·배점·제출서식** 확보 (문서에서 유일하게 미확인된 항목)
-- [ ] Golden Event 1건 확정 → `docs/10_golden_event.md` 1페이지 (시군·기간·강우·피해 공식 근거)
+- [x] **Golden Event 확정** — 2025-07-16~19 호우 (peak 7/17, 도 평균 74.9mm), `docs/10_golden_event.md`
+- [x] **Sentinel-1 가용성 확인** — 충남 전체커버 궤도는 127 ASC / 134 DESC 2개뿐.
+      침수 관측 주영상 = orbit 134, 2025-07-19 06:32 KST (peak +1.6일, 99% 커버)
+- [ ] KMA 인증키 발급 → ERA5 보조자료를 실관측 강우로 교체
+- [ ] Copernicus 계정 발급 → 실제 영상 다운로드 (카탈로그 조회는 인증 불필요)
 - [x] 저장소 초기화 + README에 Pitch·architecture 먼저 작성
 - [x] **충남 AOI 확정** — SGIS 행정동 경계에서 시도코드 34 추출, 행정동 208개 / 시군 15개,
       `src/features/aoi.py`, 8,264.7 km²
