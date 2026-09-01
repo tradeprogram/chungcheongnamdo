@@ -1,0 +1,48 @@
+# data
+data/raw/*
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+*.tif
+*.tiff
+*.parquet
+*.geoparquet
+*.gpkg
+*.shp
+*.dbf
+*.shx
+*.prj
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.ipynb_checkpoints/
+.pytest_cache/
+
+# models
+models/*.pkl
+models/*.txt
+models/*.joblib
+
+# node / next
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# secrets
+.env
+.env.local
+*credentials*.json
+service_account*.json
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
