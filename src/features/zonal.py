@@ -122,3 +122,26 @@ def parcel_stats(
         if col in parcels.columns:
             out[col] = parcels[col].to_numpy()
     return out
+
+
+def sample_points(raster_path: Path, xs: np.ndarray, ys: np.ndarray) -> pd.DataFrame:
+    """래스터를 점 좌표에서 샘플링한다 (래스터 CRS 기준).
+
+    지형(MERIT 90m, DEM 30m)과 강우(ERA5-Land 약 11km)는 필지(평균 1,500 m²)보다
+    격자가 훨씬 굵다. 필지 하나가 격자 한 칸보다 작으므로 면적평균 대신
+    대표점 샘플링으로 충분하며 훨씬 빠르다.
+    """
+    with rasterio.open(raster_path) as src:
+        rows, cols = rasterio.transform.rowcol(src.transform, xs, ys)
+        rows = np.clip(np.asarray(rows), 0, src.height - 1)
+        cols = np.clip(np.asarray(cols), 0, src.width - 1)
+        names = [n for n in (src.descriptions or ())] or [f"b{i+1}" for i in range(src.count)]
+        out = {}
+        for i, name in enumerate(names, start=1):
+            band = src.read(i)
+            values = band[rows, cols].astype(np.float32)
+            nodata = src.nodatavals[i - 1]
+            if nodata is not None:
+                values = np.where(values == nodata, np.nan, values)
+            out[name] = values
+    return pd.DataFrame(out)
