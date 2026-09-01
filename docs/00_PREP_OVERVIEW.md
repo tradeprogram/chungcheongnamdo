@@ -118,7 +118,7 @@ chungcheongnamdo/
 | 위험 | 방어책 |
 |---|---|
 | 2026 실제 심사배점 미확인 | **제출 전 공고 첨부(HWP/PDF) 수동 확보 → 제안서 목차 재가중** ← 미해결 P0 |
-| 논(畓)의 SAR 오탐 | 논/밭 strata 분리 + same-season median/MAD baseline + VV/VH·HAND·강우 fusion |
+| 논(畓)의 SAR 오탐 | **실증됨 — 실험 01에서 부정 대조군 실패.** 사건 17일 전 영상이 더 큰 이상치를 냄. 논/밭 분리(팜맵)가 방법 성립 조건. `docs/40_experiments.md` |
 | 관측시각 ≠ 침수 peak | "최대 침수"가 아닌 **"관측시점 침수"**로 표기 |
 | 피해 ground truth 부족 | 피해액 예측 포기, exposure·recovery index만 주장 |
 | Agent가 주인공이 됨 | Agent 없이도 workflow 완결. Agent는 Tool 결과 설명만 |
@@ -136,8 +136,10 @@ chungcheongnamdo/
 - [x] 저장소 초기화 + README에 Pitch·architecture 먼저 작성
 - [x] **충남 AOI 확정** — SGIS 행정동 경계에서 시도코드 34 추출, 행정동 208개 / 시군 15개,
       `src/features/aoi.py`, 8,264.7 km²
-- [ ] Waterside Guard의 S1/S2/GEE 코드 분리 이식 → `src/rs/*.py` 실행 확인
-- [ ] 팜맵 충남 필지 확보 → AOI로 clip → GeoParquet 변환 → 지도에 polygon 표시
+- [x] **GEE 연결 + S1 변화탐지 파이프라인 동작 확인** — `src/rs/gee.py`, `src/rs/sentinel1_flood.py`
+- [x] **실험 01 — 부정 대조군 수행.** 단순 변화탐지로는 논 침수 판별 불가 확인
+- [ ] **팜맵 충남 필지 확보 (최우선)** — 논/밭 분리 없이는 방법 자체가 성립하지 않음.
+      AOI로 clip → GeoParquet → 실험 01 재실행하여 대조군 통과 여부 확인
 - [ ] KMA 사건강우 ingest → event별 1h/3h/24h feature
 - [ ] DEM → slope/HAND/TWI → `field_event_features.parquet` 완성
 
