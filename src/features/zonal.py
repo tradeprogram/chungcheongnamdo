@@ -151,3 +151,46 @@ def sample_points(
                 values = np.where(values == nodata, np.nan, values)
             out[name] = values
     return pd.DataFrame(out)
+
+
+def parcel_means(
+    raster_path: Path,
+    parcels: gpd.GeoDataFrame,
+    index: np.ndarray | None = None,
+    names: list[str] | None = None,
+    chunk_rows: int = 4096,
+) -> pd.DataFrame:
+    """필지별 밴드 평균. 연속값 래스터(빈도·지형 등)에 쓴다.
+
+    parcel_stats 가 임계값 기반 카운트라면 이쪽은 단순 면적평균이다.
+    """
+    with rasterio.open(raster_path) as src:
+        if parcels.crs is None or str(parcels.crs) != str(src.crs):
+            parcels = parcels.to_crs(src.crs)
+        if names is None:
+            described = [n for n in (src.descriptions or ()) if n]
+            names = described if len(described) == src.count else [f"b{i+1}" for i in range(src.count)]
+        if index is None:
+            index = build_index(raster_path, parcels)
+        n = len(parcels)
+
+        sums = {name: np.zeros(n + 1, dtype=np.float64) for name in names}
+        counts = np.zeros(n + 1, dtype=np.float64)
+
+        for row0 in range(0, src.height, chunk_rows):
+            rows = min(chunk_rows, src.height - row0)
+            window = rasterio.windows.Window(0, row0, src.width, rows)
+            idx = index[row0 : row0 + rows].ravel()
+            keep = idx > 0
+            if not keep.any():
+                continue
+            fi = idx[keep]
+            first = src.read(1, window=window).ravel()[keep].astype(np.float32)
+            ok = np.isfinite(first)
+            counts += np.bincount(fi[ok], minlength=n + 1)
+            for band, name in enumerate(names, start=1):
+                values = src.read(band, window=window).ravel()[keep].astype(np.float32)
+                sums[name] += np.bincount(fi[ok], weights=np.nan_to_num(values[ok]), minlength=n + 1)
+
+    denom = pd.Series(counts[1:]).replace(0, np.nan)
+    return pd.DataFrame({name: sums[name][1:] / denom for name in names})
