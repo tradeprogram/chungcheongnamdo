@@ -87,10 +87,16 @@ def s1_collection(
 
 
 def analysis_mask(max_slope_deg: float = 5.0, max_hand_m: float = 20.0) -> ee.Image:
-    """영구수역·급경사·고지대를 제외한 분석 유효역."""
+    """영구수역·급경사·고지대를 제외한 분석 유효역.
+
+    경사는 반드시 `covariates.terrain_slope()` 를 쓴다. mosaic 에 ee.Terrain.slope 를
+    바로 걸면 기본 투영 때문에 경사가 0 근처로 계산돼 이 마스크가 조용히 무력화된다.
+    """
+    from src.features.covariates import terrain_slope
+
     permanent = ee.Image(GSW).select("occurrence").unmask(0).gte(50)
     hand = ee.Image(MERIT_HYDRO).select("hnd")
-    slope = ee.Terrain.slope(ee.ImageCollection(COP_DEM).mosaic().select("DEM"))
+    slope = terrain_slope()
     return permanent.Not().And(slope.lt(max_slope_deg)).And(hand.lt(max_hand_m)).rename("valid")
 
 

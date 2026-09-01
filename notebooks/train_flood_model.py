@@ -47,7 +47,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FEATURES = REPO_ROOT / "data" / "processed" / "features" / "field_event_features.parquet"
 OUT_DIR = REPO_ROOT / "data" / "reference"
 
-NUMERIC = ["hand", "slope", "elevation", "upa", "twi", "wth", "area_m2",
+NUMERIC = ["hand", "slope", "elevation", "upa", "twi", "dist_stream", "area_m2",
            "rain1d", "rain3d", "rain7d", "rain14d", "rain30d"]
 CATEGORICAL = ["class_nm"]
 LABEL_THRESHOLD = 0.5

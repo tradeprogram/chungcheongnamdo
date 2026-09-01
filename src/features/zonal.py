@@ -124,7 +124,9 @@ def parcel_stats(
     return out
 
 
-def sample_points(raster_path: Path, xs: np.ndarray, ys: np.ndarray) -> pd.DataFrame:
+def sample_points(
+    raster_path: Path, xs: np.ndarray, ys: np.ndarray, names: list[str] | None = None
+) -> pd.DataFrame:
     """래스터를 점 좌표에서 샘플링한다 (래스터 CRS 기준).
 
     지형(MERIT 90m, DEM 30m)과 강우(ERA5-Land 약 11km)는 필지(평균 1,500 m²)보다
@@ -135,7 +137,11 @@ def sample_points(raster_path: Path, xs: np.ndarray, ys: np.ndarray) -> pd.DataF
         rows, cols = rasterio.transform.rowcol(src.transform, xs, ys)
         rows = np.clip(np.asarray(rows), 0, src.height - 1)
         cols = np.clip(np.asarray(cols), 0, src.width - 1)
-        names = [n for n in (src.descriptions or ())] or [f"b{i+1}" for i in range(src.count)]
+        if names is None:
+            described = [n for n in (src.descriptions or ()) if n]
+            names = described if len(described) == src.count else [f"b{i+1}" for i in range(src.count)]
+        if len(names) != src.count:
+            raise ValueError(f"밴드명 {len(names)}개 != 래스터 밴드 {src.count}개")
         out = {}
         for i, name in enumerate(names, start=1):
             band = src.read(i)

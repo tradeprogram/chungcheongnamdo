@@ -25,30 +25,54 @@ MERIT = "MERIT/Hydro/v1_0_1"
 COP_DEM = "COPERNICUS/DEM/GLO30_2024_1"
 
 
+STREAM_UPA_KM2 = 1.0  # 상류 유역면적 1km² 이상을 하도로 본다
+
+
+def terrain_slope() -> ee.Image:
+    """경사 (도).
+
+    **주의 — ImageCollection.mosaic() 결과에 ee.Terrain.slope 를 그냥 걸면 안 된다.**
+    mosaic 은 기본 투영(1도 격자)을 갖기 때문에 경사가 사실상 0으로 계산된다
+    (충남 p50 이 0.03도로 나온다). 원본 projection 을 다시 붙여야 한다.
+    이 실수는 slope < 5도 같은 마스크를 항상 참으로 만들어 조용히 무력화한다.
+    """
+    col = ee.ImageCollection(COP_DEM)
+    proj = ee.Image(col.first()).select("DEM").projection()
+    dem = col.mosaic().select("DEM").setDefaultProjection(proj)
+    return ee.Terrain.slope(dem).rename("slope")
+
+
 def static_image() -> ee.Image:
     """지형·수문 정적 공변량.
 
     밴드
-        elevation   표고 (m)
-        slope       경사 (도)
-        hand        HAND — 최근접 하도 위 높이 (m)
-        upa         상류 유역면적 (km²)
-        twi         지형습윤지수 ln(upa / tan(slope))
-        wth         하폭 (m). 하도 근접도의 대리변수
+        elevation    표고 (m)
+        slope        경사 (도)
+        hand         HAND — 최근접 하도 위 높이 (m)
+        upa          상류 유역면적 (km²)
+        twi          지형습윤지수 ln(upa / tan(slope))
+        dist_stream  최근접 하도까지 거리 (m)
     """
     merit = ee.Image(MERIT)
     dem = ee.ImageCollection(COP_DEM).mosaic().select("DEM").rename("elevation")
-    slope = ee.Terrain.slope(dem).rename("slope")
+    slope = terrain_slope()
 
     upa = merit.select("upa").rename("upa")
     hand = merit.select("hnd").rename("hand")
-    wth = merit.select("wth").rename("wth")
 
     # TWI = ln(a / tan(beta)). 경사 0 에서 발산하지 않도록 하한을 둔다.
     tan_beta = slope.multiply(3.141592653589793 / 180).tan().max(0.001)
     twi = upa.max(0.0001).divide(tan_beta).log().rename("twi")
 
-    return dem.addBands([slope, hand, upa, twi, wth]).toFloat()
+    # 하도까지 거리. MERIT 의 wth(하폭)는 하천 픽셀에만 정의돼 있어
+    # 필지 feature 로 쓸 수 없다 (충남 필지 143만 중 771개만 유효했다).
+    proj = merit.select("upa").projection()
+    stream = merit.select("upa").gte(STREAM_UPA_KM2).reproject(proj)
+    dist_stream = (
+        stream.fastDistanceTransform(256).sqrt().multiply(proj.nominalScale()).rename("dist_stream")
+    )
+
+    return dem.addBands([slope, hand, upa, twi, dist_stream]).toFloat()
 
 
 def rainfall_image(date_kst: str, windows: tuple[int, ...] = (1, 3, 7, 14, 30)) -> ee.Image:

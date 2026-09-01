@@ -44,8 +44,15 @@ def download_image(
     scale: int = 20,
     tile_deg: float = 0.25,
     crs: str = "EPSG:4326",
+    band_names: list[str] | None = None,
 ) -> Path:
-    """image 를 타일로 내려받아 하나의 GeoTIFF 로 합친다. bounds 는 EPSG:4326."""
+    """image 를 타일로 내려받아 하나의 GeoTIFF 로 합친다. bounds 는 EPSG:4326.
+
+    GEE 가 내려주는 GeoTIFF 에는 밴드 이름이 들어 있지 않다.
+    ee.Image 에서 밴드명을 읽어 descriptions 로 기록해 둔다.
+    """
+    if band_names is None:
+        band_names = image.bandNames().getInfo()
     tiles = _tiles(bounds, tile_deg)
     tmp = Path(tempfile.mkdtemp(prefix="ee_dl_"))
     paths: list[Path] = []
@@ -86,7 +93,8 @@ def download_image(
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(out_path, "w", **profile) as dst:
             dst.write(mosaic)
-            dst.descriptions = srcs[0].descriptions
+            if band_names and len(band_names) == mosaic.shape[0]:
+                dst.descriptions = tuple(band_names)
         for s in srcs:
             s.close()
     finally:

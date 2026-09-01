@@ -49,19 +49,21 @@ def main() -> None:
     print(f"필지 {len(parcels):,}개 대표점")
 
     # --- 정적 지형 ---------------------------------------------------------
+    static_bands = ["elevation", "slope", "hand", "upa", "twi", "dist_stream"]
     static_path = RASTER_DIR / "static_terrain.tif"
     if not static_path.exists():
         print("\n=== 지형 공변량 ===")
         export.download_image(
             covariates.static_image(), bounds, static_path,
-            scale=STATIC_SCALE_M, tile_deg=0.25, crs=EXPORT_CRS,
+            scale=STATIC_SCALE_M, tile_deg=0.25, crs=EXPORT_CRS, band_names=static_bands,
         )
-    static = zonal.sample_points(static_path, xs, ys)
+    static = zonal.sample_points(static_path, xs, ys, names=static_bands)
     static["farmmap_id"] = parcels["farmmap_id"].to_numpy()
     print("지형 컬럼:", [c for c in static.columns if c != "farmmap_id"])
     print(static.drop(columns="farmmap_id").describe().round(2).to_string())
 
     # --- 사건별 강우 -------------------------------------------------------
+    rain_bands = [f"rain{d}d" for d in (1, 3, 7, 14, 30)]
     rain_frames = []
     for event_id, date_kst, _orbit, _plat, _base in EVENTS:
         rain_path = RASTER_DIR / f"rain_{event_id}.tif"
@@ -69,9 +71,9 @@ def main() -> None:
             print(f"\n=== 선행강우 {event_id} ({date_kst}) ===")
             export.download_image(
                 covariates.rainfall_image(date_kst), bounds, rain_path,
-                scale=RAIN_SCALE_M, tile_deg=0.5, crs=EXPORT_CRS,
+                scale=RAIN_SCALE_M, tile_deg=0.5, crs=EXPORT_CRS, band_names=rain_bands,
             )
-        rain = zonal.sample_points(rain_path, xs, ys)
+        rain = zonal.sample_points(rain_path, xs, ys, names=rain_bands)
         rain["farmmap_id"] = parcels["farmmap_id"].to_numpy()
         rain["event_id"] = event_id
         rain_frames.append(rain)
