@@ -3,15 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>물길잡이 — 충남 농경지 침수 위성관측 시스템</title>
+<title>물길잡이 — 농경지 침수 및 호우 위성관측 체계</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
+<div class="fx-grid" aria-hidden="true"></div>
 <header>
   <div class="head-left">
     <h1>물길잡이</h1>
-    <p class="sub">충남 농경지 침수 위성관측 시스템</p>
+    <p class="sub">농경지 침수 및 호우 위성관측 체계</p>
   </div>
   <div class="stats" id="stats"></div>
 </header>
@@ -21,8 +22,8 @@
     <div class="live" id="live"></div>
 
     <div class="tabs" id="tabs">
-      <button data-tab="storms" class="on">호우 사건</button>
       <button data-tab="emd">지역</button>
+      <button data-tab="storms" class="on">호우 사건</button>
     </div>
 
     <div id="storms-pane">
@@ -125,6 +126,6 @@
 </main>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
