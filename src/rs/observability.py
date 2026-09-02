@@ -102,6 +102,37 @@ def acquisition_reliability(history: pd.DataFrame | None = None, slots_per_summe
     return {int(orbit): float((counts[orbit] / slots_per_summer).mean()) for orbit in counts.columns}
 
 
+def grade_observation(lag_hours: float, rel_orbit: int | None = None,
+                      history: pd.DataFrame | None = None) -> dict:
+    """**이미 이루어진 관측 하나**의 품질 등급.
+
+    `observation_window` 와 답하는 질문이 다르다.
+        observation_window  "이 호우는 앞으로 언제 확인할 수 있는가" (사전 계획)
+        grade_observation   "이 관측은 사건을 담고 있는가"           (사후 판독)
+
+    사전 계획에서는 peak 이후 최선의 통과를 찾지만, 사후 판독에서는
+    실제로 그 영상이 몇 시간 뒤에 찍혔는지가 전부다.
+    같은 사건에 통과가 여러 번 있으면 각각 다른 등급을 받는다 —
+    2025년 7월 호우의 07-19(+39.5h)와 07-24(+168h)가 그 예다.
+
+    등급 경계는 실험 04 실측에서 왔다 (peak+1.6일 논 25.20% vs peak+7일 1.19%).
+    """
+    if lag_hours < 0:
+        return {"grade": "C", "reason": "사건 이전 관측 — 침수 판정 대상 아님"}
+    if lag_hours <= 48:
+        grade, reason = "A", f"peak +{lag_hours:.0f}시간 — 침수 범위 판정 신뢰 가능"
+    elif lag_hours <= 120:
+        grade, reason = "B", f"peak +{lag_hours:.0f}시간 — 잔존 침수만 관측. 논은 배수됐을 수 있음"
+    else:
+        grade, reason = "C", f"peak +{lag_hours:.0f}시간 — 사건을 놓친 관측. 현장조사 필요"
+
+    out = {"grade": grade, "reason": reason}
+    if rel_orbit is not None:
+        prob = acquisition_reliability(history).get(rel_orbit, 0.0)
+        out["reliability"] = round(prob, 2)
+    return out
+
+
 def observation_window(peak: dt.datetime, days: int = 7, history: pd.DataFrame | None = None) -> dict:
     """호우 peak 시각에 대한 관측 창 판정.
 
