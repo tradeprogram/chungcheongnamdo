@@ -23,20 +23,32 @@ import ee
 import httpx
 import rasterio
 from rasterio.merge import merge
+from shapely.geometry import box
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
 MAX_RETRY = 5
 BACKOFF_S = 20
 
 
-def _tiles(bounds: tuple[float, float, float, float], tile_deg: float) -> list[tuple[float, float, float, float]]:
+def _tiles(
+    bounds: tuple[float, float, float, float],
+    tile_deg: float,
+    aoi_geom=None,
+) -> list[tuple[float, float, float, float]]:
+    """bbox 를 타일로 자른다. aoi_geom 을 주면 닿지 않는 타일은 버린다.
+
+    충남 bbox 는 서해를 크게 물고 있어 45타일 중 13타일이 도 경계에 닿지 않는다.
+    한 타일이 연산 1분씩 걸리는 상황에서 그 29%는 그냥 버리는 시간이다.
+    """
     xmin, ymin, xmax, ymax = bounds
     out = []
     y = ymin
     while y < ymax:
         x = xmin
         while x < xmax:
-            out.append((x, y, min(x + tile_deg, xmax), min(y + tile_deg, ymax)))
+            tile = (x, y, min(x + tile_deg, xmax), min(y + tile_deg, ymax))
+            if aoi_geom is None or aoi_geom.intersects(box(*tile)):
+                out.append(tile)
             x += tile_deg
         y += tile_deg
     return out
@@ -50,6 +62,7 @@ def download_image(
     tile_deg: float = 0.25,
     crs: str = "EPSG:4326",
     band_names: list[str] | None = None,
+    aoi_geom=None,
 ) -> Path:
     """image 를 타일로 내려받아 하나의 GeoTIFF 로 합친다. bounds 는 EPSG:4326.
 
@@ -58,7 +71,7 @@ def download_image(
     """
     if band_names is None:
         band_names = image.bandNames().getInfo()
-    tiles = _tiles(bounds, tile_deg)
+    tiles = _tiles(bounds, tile_deg, aoi_geom)
     tmp = Path(tempfile.mkdtemp(prefix="ee_dl_"))
     paths: list[Path] = []
     print(f"타일 {len(tiles)}개 (scale={scale}m)")

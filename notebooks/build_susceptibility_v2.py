@@ -48,6 +48,19 @@ SCALE_M = 20
 # GEE 가 견디는 한 그래프당 관측 수. 4건은 User memory limit exceeded 로 거부됐다.
 CHUNK = 2
 
+# 관측 수 상한. 타일 하나가 약 1분 걸리고 도 경계에 닿는 타일이 32개이므로
+# 관측 2건짜리 청크 하나가 약 30분이다. 밤 사이에 끝나는 규모로 맞춘다.
+#
+# 젖은 관측은 조건에 맞는 21건 중 강수량 상위 12건을 쓴다. 실험 05 의 라벨은
+# 관측 2건이었고 ROC-AUC 0.629 였다. 12건이면 라벨 안정화 목적에는 충분하다.
+# 마른 관측은 165건이나 되지만 대조군이므로 8건이면 오탐 여부를 가릴 수 있다.
+# 계절 차이가 대조를 오염시키지 않도록 젖은 관측의 day-of-year 범위 안에서 고른다.
+MAX_WET = 12
+MAX_DRY = 8
+
+
+AOI_GEOM = None  # 충남 경계 (EPSG:4326). main 에서 채운다.
+
 
 def export_parts(aoi, bounds, tag: str, passes: pd.DataFrame) -> list[Path]:
     PART_DIR.mkdir(parents=True, exist_ok=True)
@@ -65,7 +78,7 @@ def export_parts(aoi, bounds, tag: str, passes: pd.DataFrame) -> list[Path]:
         export.download_image(
             sus.flood_frequency_image(aoi, part, ORBIT), bounds, path,
             scale=SCALE_M, tile_deg=0.25, crs="EPSG:5179",
-            band_names=["n_flag", "n_obs", "freq"],
+            band_names=["n_flag", "n_obs", "freq"], aoi_geom=AOI_GEOM,
         )
     return paths
 
@@ -99,9 +112,12 @@ def combine(paths: list[Path], out_path: Path) -> Path:
 
 
 def main() -> None:
+    global AOI_GEOM
     gee.init()
     aoi = gee.chungnam_aoi()
-    bounds = tuple(gpd.read_file(REPO_ROOT / "data" / "aoi" / "chungnam_boundary.geojson").total_bounds)
+    boundary = gpd.read_file(REPO_ROOT / "data" / "aoi" / "chungnam_boundary.geojson")
+    AOI_GEOM = boundary.geometry.union_all()
+    bounds = tuple(boundary.total_bounds)
 
     parcels = gpd.read_parquet(
         REPO_ROOT / "data" / "processed" / "farmmap" / "chungnam_2021.parquet",
@@ -109,11 +125,22 @@ def main() -> None:
     ).reset_index(drop=True)
     print(f"필지 {len(parcels):,}개")
 
-    sets = {
-        "wet": sus.load_passes(ORBIT, wet_min_rain3d=WET_MIN_RAIN3D),
-        "dry": sus.load_passes(ORBIT, dry_max_rain3d=DRY_MAX_RAIN3D),
-    }
-    print(f"젖은 관측 {len(sets['wet'])}건 | 마른 관측 {len(sets['dry'])}건 (관측 {CHUNK}건씩 분할)")
+    wet_all = sus.load_passes(ORBIT, wet_min_rain3d=WET_MIN_RAIN3D)
+    wet = wet_all.nlargest(MAX_WET, "rain3d").sort_values("date").reset_index(drop=True)
+
+    # 대조군은 젖은 관측과 같은 계절에서 고른다. 6월 영상을 7월 baseline 과 비교하면
+    # 생육단계 차이가 이상치로 잡힌다는 것이 실험 02 에서 확인됐다.
+    doy = wet["date"].dt.dayofyear
+    dry_all = sus.load_passes(ORBIT, dry_max_rain3d=DRY_MAX_RAIN3D)
+    in_season = dry_all[dry_all["date"].dt.dayofyear.between(doy.min() - 20, doy.max() + 20)]
+    pool = in_season if len(in_season) >= MAX_DRY else dry_all
+    step = max(len(pool) // MAX_DRY, 1)
+    dry = pool.iloc[::step].head(MAX_DRY).sort_values("date").reset_index(drop=True)
+
+    sets = {"wet": wet, "dry": dry}
+    print(f"젖은 관측 {len(wet)}건 (조건 충족 {len(wet_all)}건 중 강수 상위) | "
+          f"마른 관측 {len(dry)}건 (조건 충족 {len(dry_all)}건 중 같은 계절에서 표본)")
+    print(f"관측 {CHUNK}건씩 분할 · 도 경계에 닿는 타일만 요청")
 
     index = None
     frames = []

@@ -41,7 +41,10 @@ setTimeout(() => map.resize(), 200);
 const PARCEL_FIELD = {
   "o134_2025-07-19": "e2025",
   "o127_2025-07-24": "e2025late",
+  "o127_2024-07-17": "e2024",
   "o127_2023-07-23": "e2023",
+  "o127_2022-07-16": "e2022",
+  "o127_2021-07-21": "e2021",
 };
 
 const STATUS = {
@@ -450,10 +453,14 @@ function showParcel(p) {
   html += stat("면적", `${Number(p.area_m2).toLocaleString()} m²`);
   html += stat("다년 침수 빈도", pct(p.wet_freq));
   html += stat("관측 횟수", `${p.wet_n_obs ?? "-"} 회`);
+  // 사건 목록은 events.json 에서 끌어온다. 화면에 사건을 추가할 때
+  // 여기를 같이 고치는 것을 잊으면 필지 상세만 옛 세 건에 멈춘다.
   html += `<div class="sep">사건별 침수율</div>`;
-  html += stat("2025-07-19 (지연 40시간)", pct(p.e2025));
-  html += stat("2025-07-24 (지연 172시간)", pct(p.e2025late));
-  html += stat("2023-07-23 (지연 7시간)", pct(p.e2023));
+  for (const [id, field] of Object.entries(PARCEL_FIELD)) {
+    const ev = events.find((x) => x.id === id);
+    const label = ev ? ev.label : id;
+    html += stat(label, pct(p[field]));
+  }
   const basisText = {
     0: `면적 집계 · 유효 화소 ${p.npx ?? "-"}개`,
     1: "대표점 표본 · 화소 1개",

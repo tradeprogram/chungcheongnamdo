@@ -7,8 +7,8 @@
   "acquisition_reliability": 0.87,
   "rain3d_mm": 3.6,
   "rain1d_mm": 0.0,
-  "paddy_pct": 0.2,
-  "upland_pct": 0.49
+  "paddy_pct": 0.39,
+  "upland_pct": 0.84
  },
  {
   "id": "o127_2022-07-16",
@@ -18,8 +18,8 @@
   "acquisition_reliability": 0.87,
   "rain3d_mm": 4.7,
   "rain1d_mm": 1.6,
-  "paddy_pct": 0.6,
-  "upland_pct": 0.58
+  "paddy_pct": 0.69,
+  "upland_pct": 0.7
  },
  {
   "id": "o127_2023-07-23",
@@ -29,12 +29,12 @@
   "acquisition_reliability": 0.87,
   "rain3d_mm": 65.7,
   "rain1d_mm": 50.9,
-  "paddy_pct": 24.93,
-  "upland_pct": 39.19,
+  "paddy_pct": 28.69,
+  "upland_pct": 42.09,
   "peak_kst": "2023-07-23 12:00",
   "lag_hours": 6.5,
   "grade": "A",
-  "grade_reason": "peak +7시간 — 침수 범위 판정 신뢰 가능"
+  "grade_reason": "최대 강수 시점 후 7시간 경과. 침수 범위 판정에 적합한 관측"
  },
  {
   "id": "o127_2024-07-17",
@@ -44,8 +44,8 @@
   "acquisition_reliability": 0.87,
   "rain3d_mm": 39.0,
   "rain1d_mm": 8.0,
-  "paddy_pct": 5.82,
-  "upland_pct": 8.34
+  "paddy_pct": 6.65,
+  "upland_pct": 7.94
  },
  {
   "id": "o127_2025-07-24",
@@ -55,12 +55,12 @@
   "acquisition_reliability": 0.87,
   "rain3d_mm": 4.0,
   "rain1d_mm": 0.0,
-  "paddy_pct": 1.27,
-  "upland_pct": 1.04,
+  "paddy_pct": 1.42,
+  "upland_pct": 1.31,
   "peak_kst": "2025-07-17 15:00",
   "lag_hours": 171.5,
   "grade": "C",
-  "grade_reason": "peak +172시간 — 사건을 놓친 관측. 현장조사 필요"
+  "grade_reason": "최대 강수 시점 후 172시간 경과. 침수 판정에 부적합하며 현장 조사가 필요함"
  },
  {
   "id": "o134_2025-07-19",
@@ -70,11 +70,11 @@
   "acquisition_reliability": 0.63,
   "rain3d_mm": 127.2,
   "rain1d_mm": 35.4,
-  "paddy_pct": 25.99,
-  "upland_pct": 20.89,
+  "paddy_pct": 25.67,
+  "upland_pct": 20.9,
   "peak_kst": "2025-07-17 15:00",
   "lag_hours": 39.5,
   "grade": "A",
-  "grade_reason": "peak +40시간 — 침수 범위 판정 신뢰 가능"
+  "grade_reason": "최대 강수 시점 후 40시간 경과. 침수 범위 판정에 적합한 관측"
  }
 ]
