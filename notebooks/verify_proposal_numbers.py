@@ -104,6 +104,23 @@ def main() -> None:
     results.append(check("LightGBM 사건 홀드아웃 ROC-AUC 하한", 0.50, lo, 0.005))
     results.append(check("LightGBM 사건 홀드아웃 ROC-AUC 상한", 0.55, hi, 0.005))
 
+    # 오탐 대조군. 기획서가 인용하는 32건은 **끝난 검증**(실험 06)의 조건이고,
+    # 화면에 싣는 침수빈도 레이어의 대조군 수는 수출 예산에 따라 달라진다.
+    # 그래서 건수를 맞추는 대신 **결론이 유지되는지**를 본다.
+    sus_path = REPO_ROOT / "data" / "processed" / "features" / "parcel_susceptibility.parquet"
+    if sus_path.exists():
+        sus = pd.read_parquet(sus_path, columns=["wet_freq", "dry_freq", "wet_n_obs", "dry_n_obs"])
+        ok = sus[sus["wet_n_obs"].fillna(0) > 0]
+        dry_mean, wet_mean = ok["dry_freq"].mean(), ok["wet_freq"].mean()
+        corr = ok[["wet_freq", "dry_freq"]].corr().iloc[0, 1]
+        print()
+        print(f"  현재 레이어: 대조군 {int(ok['dry_n_obs'].max())}건 · "
+              f"dry {dry_mean:.4f} / wet {wet_mean:.4f} · 상관 {corr:+.3f}")
+        conclusion = dry_mean < wet_mean / 3 and abs(corr) < 0.2
+        print(f"  [{'OK  ' if conclusion else '틀림'}] "
+              f"{'대조군 결론 유지 (오탐 낮고 상관 약함)':<34}")
+        results.append(conclusion)
+
     # 본문이 실제로 그 문자열을 담고 있는지도 본다 — 자료만 맞고 본문이 낡을 수 있다
     print("\n본문 문자열 존재 확인")
     for token in ("16,709ha", "1,434,057", "427", "77건", "17건(22%)", "99.1%",
