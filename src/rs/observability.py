@@ -27,7 +27,10 @@ from pathlib import Path
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PASSES_CSV = REPO_ROOT / "data" / "reference" / "s1_acquisitions_chungnam.csv"
+# 정본은 build_archive.py 가 만드는 전체 아카이브다.
+# catalog.py 의 기본 출력(s1_acquisitions_chungnam.csv)은 조회 구간만 담는 임시 덤프이므로
+# 그것을 읽으면 조회 범위에 따라 촬영률·앵커가 통째로 달라진다.
+PASSES_CSV = REPO_ROOT / "data" / "reference" / "s1_passes_rainfall.csv"
 
 REPEAT_DAYS = 12  # Sentinel-1 반복 주기
 MIN_COVERAGE = 80.0
@@ -82,7 +85,9 @@ def upcoming(start: dt.datetime, days: int = 14, history: pd.DataFrame | None = 
     return sorted(out, key=lambda p: p.when)
 
 
-def acquisition_reliability(history: pd.DataFrame | None = None, slots_per_summer: int = 9) -> dict[int, float]:
+def acquisition_reliability(
+    history: pd.DataFrame | None = None, slots_per_summer: int = 9, recent_years: int | None = None
+) -> dict[int, float]:
     """궤도별 촬영 신뢰도 — **통과 예정과 실제 촬영은 다르다.**
 
     Sentinel-1 은 12일마다 같은 지점 상공을 지나지만 매번 촬영하지는 않는다.
@@ -97,9 +102,20 @@ def acquisition_reliability(history: pd.DataFrame | None = None, slots_per_summe
     """
     history = load_history() if history is None else history
     df = history.copy()
+    # 여름(6/1~9/15)만 센다. 아카이브가 연중 전체를 담고 있으면
+    # 연간 통과 수를 여름 슬롯 수(9)로 나누게 되어 100%를 넘는 값이 나온다.
+    df = df[(df["when"].dt.month.between(6, 9)) & ~((df["when"].dt.month == 9) & (df["when"].dt.day > 15))]
     df["year"] = df["when"].dt.year
+    # 앞으로의 촬영 확률을 볼 때는 최근 몇 년만 쓴다. 위성 구성이 바뀌면
+    # 과거 평균이 현재를 설명하지 못한다 — Sentinel-1B 고장(2021.12) 이후
+    # orbit 134 는 2022·2024 여름 촬영이 0건이었고 S1C 투입(2024.12) 후에야 회복됐다.
+    if recent_years:
+        df = df[df["year"] > df["year"].max() - recent_years]
     counts = df.pivot_table(index="year", columns="rel_orbit", values="when", aggfunc="count").fillna(0)
-    return {int(orbit): float((counts[orbit] / slots_per_summer).mean()) for orbit in counts.columns}
+    return {
+        int(orbit): float(min((counts[orbit] / slots_per_summer).mean(), 1.0))
+        for orbit in counts.columns
+    }
 
 
 def grade_observation(lag_hours: float, rel_orbit: int | None = None,

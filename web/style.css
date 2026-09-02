@@ -30,10 +30,16 @@ header {
 header h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
 header .sub { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
 
+/* 헤더 높이가 내용에 따라 달라지므로 100vh 에서 고정값을 빼지 않는다.
+   body 를 세로 flex 로 두고 main 이 남은 높이를 전부 차지하게 한다. */
+body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+header { flex-shrink: 0; }
+
 main {
   display: grid;
   grid-template-columns: 300px 1fr 320px;
-  height: calc(100vh - 62px);
+  flex: 1;
+  min-height: 0;
 }
 
 .panel {
@@ -135,3 +141,41 @@ ul.compact li b { color: var(--text); font-weight: 600; }
   pointer-events: none;
   white-space: nowrap;
 }
+
+header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.head-left { min-width: 0; }
+
+.stats { display: flex; gap: 20px; flex-shrink: 0; }
+.stats div { text-align: right; }
+.stats b { display: block; font-size: 19px; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.stats span { font-size: 11px; color: var(--muted); }
+.stats .hl b { color: var(--grade-b); }
+
+.live {
+  border: 1px solid var(--grade-b);
+  background: rgba(245, 158, 11, .08);
+  border-radius: 8px; padding: 10px; margin-bottom: 18px;
+}
+.live-tag {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  background: var(--grade-b); color: #0b1218;
+  border-radius: 4px; padding: 1px 6px; margin-bottom: 5px;
+}
+.live-title { font-weight: 600; margin-bottom: 3px; }
+.live-body { font-size: 12px; color: var(--muted); line-height: 1.55; }
+.live-body b { color: var(--text); }
+
+.filters { display: flex; gap: 5px; margin-bottom: 9px; }
+.filters button {
+  flex: 1; cursor: pointer; font-family: inherit; font-size: 12px;
+  background: var(--panel-2); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 0;
+}
+.filters button.on { color: var(--text); border-color: var(--accent); }
+
+.grade.P { background: #64748b; color: #e6edf5; }
+.pin {
+  font-size: 10px; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 3px; padding: 0 4px;
+}
+li.event.pending { border-color: var(--grade-b); }

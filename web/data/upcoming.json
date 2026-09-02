@@ -1,20 +1,20 @@
 [
  {
-  "when": "2026-09-05 18:31",
-  "orbit": 127,
-  "direction": "ASCENDING",
-  "reliability": 0.73
- },
- {
-  "when": "2026-09-12 06:31",
+  "when": "2026-09-07 06:31",
   "orbit": 134,
   "direction": "DESCENDING",
-  "reliability": 0.24
+  "reliability": 0.37
  },
  {
-  "when": "2026-09-17 18:31",
+  "when": "2026-09-12 18:31",
   "orbit": 127,
   "direction": "ASCENDING",
-  "reliability": 0.73
+  "reliability": 0.67
+ },
+ {
+  "when": "2026-09-19 06:31",
+  "orbit": 134,
+  "direction": "DESCENDING",
+  "reliability": 0.37
  }
 ]

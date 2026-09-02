@@ -1,0 +1,10 @@
+{
+ "period": "2017-01-14 ~ 2026-08-26",
+ "n_passes": 427,
+ "n_storms": 77,
+ "n_grade_a": 17,
+ "pct_grade_a": 22.1,
+ "n_missed": 10,
+ "n_pending": 1,
+ "generated_at": "2026-09-02 15:18"
+}

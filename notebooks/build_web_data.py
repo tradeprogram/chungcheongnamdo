@@ -98,7 +98,8 @@ def main() -> None:
     summary = pd.read_csv(REPO_ROOT / "data" / "reference" / "field_event_summary.csv", encoding="utf-8-sig")
     rain = pd.read_csv(REPO_ROOT / "data" / "reference" / "s1_passes_rainfall.csv", encoding="utf-8-sig")
     rain["date"] = pd.to_datetime(rain["date"]).dt.strftime("%Y-%m-%d")
-    reliability = obs.acquisition_reliability(history)
+    reliability = obs.acquisition_reliability(history)              # 아카이브 맥락: 10년 평균
+    reliability_now = obs.acquisition_reliability(history, recent_years=3)  # 예보: 현재 위성 구성
 
     print("오버레이 생성")
     events = []
@@ -149,7 +150,7 @@ def main() -> None:
 
     # 통과 예보
     upcoming = [{"when": p.when.strftime("%Y-%m-%d %H:%M"), "orbit": p.rel_orbit,
-                 "direction": p.direction, "reliability": round(reliability.get(p.rel_orbit, 0), 2)}
+                 "direction": p.direction, "reliability": round(reliability_now.get(p.rel_orbit, 0), 2)}
                 for p in obs.upcoming(dt.datetime.now(), 21, history)]
     (WEB_DATA / "upcoming.json").write_text(json.dumps(upcoming, ensure_ascii=False, indent=1), encoding="utf-8")
 
