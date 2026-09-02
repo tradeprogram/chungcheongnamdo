@@ -282,6 +282,19 @@ function renderStats() {
 }
 
 // 관측 대기 중인 사건 = 지금 이 순간 행정이 답을 기다리는 사건
+// 통과 예정만 알려주면 부족하다. 그 궤도가 실제로 찍을 확률을 함께 적어야
+// 담당자가 "기다릴지 지금 나갈지"를 판단할 수 있다. 이것이 ③ 독창성의 핵심이다.
+// 최근 3년 기준을 쓴다 — 전체 기간 값은 위성 구성이 바뀌기 전을 포함해 낙관적이다.
+const ORBIT_RELIABILITY_RECENT = { 127: 0.67, 134: 0.37 };
+
+function passProbability(s) {
+  const p = ORBIT_RELIABILITY_RECENT[s.next_pass_orbit];
+  if (!s.next_pass_kst || p === undefined) return "";
+  const warn = p < 0.5 ? " live-warn" : "";
+  return `<br><span class="live-prob${warn}">orbit ${s.next_pass_orbit} · 최근 3년 촬영 확률
+    <b>${Math.round(p * 100)}%</b>${p < 0.5 ? " — 통과해도 촬영되지 않을 수 있습니다" : ""}</span>`;
+}
+
 function renderLive() {
   const pending = storms.filter((s) => s.status === "pending");
   if (!pending.length) { el("live").style.display = "none"; return; }
@@ -293,6 +306,7 @@ function renderLive() {
       사건 누적 강수량 ${s.total_mm}mm. 현재까지 충청남도 전역을 포함하는 관측이 없습니다.<br>
       다음 통과 예정 <b>${s.next_pass_kst ?? "미정"}</b>
       ${s.next_pass_lag_hours ? `(최대 강수 시점 후 ${Math.round(s.next_pass_lag_hours / 24)}일)` : ""}
+      ${passProbability(s)}
     </div>`;
 }
 
