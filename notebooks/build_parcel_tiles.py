@@ -64,6 +64,13 @@ def main() -> None:
         sus_cols.append("wet_method")
     parcels = parcels.merge(sus[sus_cols], on="farmmap_id", how="left")
 
+    # 관측이 없는 필지의 침수 빈도는 0 이 아니라 **모름**이다.
+    # 0 으로 두면 화면이 "다년 침수 빈도 0.0%"라고 단언하고, 읍면동 평균도
+    # 관측 공백만큼 낮은 쪽으로 끌려간다. NaN 으로 두어 구분한다.
+    no_obs = parcels["wet_n_obs"].fillna(0) <= 0
+    parcels.loc[no_obs, ["wet_freq", "dry_freq"]] = float("nan")
+    print(f"  다년 침수 빈도 — 값 있음 {(~no_obs).mean()*100:.1f}% / 관측 없음 {no_obs.mean()*100:.1f}%")
+
     stats = pd.read_parquet(STATS)
     stats = stats[stats["event_id"].isin(EVENT_COLS)]
     wide = stats.pivot_table(index="farmmap_id", columns="event_id", values="double_fraction")
@@ -107,7 +114,11 @@ def main() -> None:
             "sgg_nm": g["sgg_nm"].iloc[0],
             "parcels": len(g),
             "area_km2": round(g["area_m2"].sum() / 1e6, 2),
-            "wet_freq": round(float(g["wet_freq"].mean()), 4),
+            # 관측이 없는 필지는 평균에서 뺀다 (mean 은 NaN 을 이미 제외한다).
+            # 표본이 너무 적으면 순위를 만들지 않는다.
+            "wet_freq": (round(float(g["wet_freq"].mean()), 4)
+                         if g["wet_freq"].notna().sum() >= max(len(g) * 0.5, 10) else None),
+            "freq_n": int(g["wet_freq"].notna().sum()),
             # 읍면동 단위 판독률 — 화면에서 근거의 두께를 함께 보여준다
             "read_pct": round(float((g["mth"] < 2).mean() * 100), 1) if "mth" in g else None,
             "geometry": merged,
@@ -120,7 +131,11 @@ def main() -> None:
         "wet_obs_max": int(obs.max()) if len(obs) else None,
         "parcels_with_freq_pct": round(float((obs > 0).mean() * 100), 1) if len(obs) else 0.0,
     }, ensure_ascii=False), encoding="utf-8")
+    # wet_freq 가 없는 읍면동은 순위도 없다. 0 으로 채워 최하위에 놓으면
+    # "관측이 없다"가 "침수가 없다"로 읽힌다.
     emd["rank"] = emd["wet_freq"].rank(ascending=False, method="min").astype("Int64")
+    n_ranked = int(emd["wet_freq"].notna().sum())
+    print(f"  읍면동 침수 빈도 산출 {n_ranked}/{len(emd)}개")
 
     WEB_DATA.mkdir(parents=True, exist_ok=True)
     out_path = WEB_DATA / "emd.geojson"

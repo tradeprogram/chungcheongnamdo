@@ -110,8 +110,11 @@ async function boot() {
     map.addLayer({
       id: "emd-fill", type: "fill", source: "emd",
       paint: {
-        "fill-color": ["interpolate", ["linear"], ["coalesce", ["get", "wet_freq"], 0],
-          0.05, "#1b3a5c", 0.08, "#2563eb", 0.11, "#f59e0b", 0.14, "#ef4444"],
+        // 값이 없는 읍면동은 회색으로 둔다. 0 으로 보간하면 관측 공백이
+        // 가장 안전한 지역처럼 칠해진다.
+        "fill-color": ["case", ["==", ["coalesce", ["get", "wet_freq"], -1], -1], "#475569",
+          ["interpolate", ["linear"], ["get", "wet_freq"],
+          0.05, "#1b3a5c", 0.08, "#2563eb", 0.11, "#f59e0b", 0.14, "#ef4444"]],
         "fill-opacity": 0.55,
       },
       layout: { visibility: "none" },
@@ -404,15 +407,60 @@ function zoomTo(geom) {
   map.fitBounds([[minX, minY], [maxX, maxY]], { padding: 60, maxZoom: 13 });
 }
 
-async function setOverlay(id) {
+// 스타일 로딩이 끝난 뒤에 실행한다. addSource/addLayer 는 그 전에 부르면 예외를
+// 던지는데, async 함수 안에서 던지면 처리되지 않은 거부로 사라지고 오버레이만
+// 조용히 빠진다. 배경 타일이 느린 환경에서 실제로 그렇게 됐다.
+function whenStyleReady(fn) {
+  if (map.isStyleLoaded()) { fn(); return; }
+  map.once("idle", () => whenStyleReady(fn));
+}
+
+let overlayWanted = null;
+
+function clearOverlay() {
   if (map.getLayer("overlay-layer")) map.removeLayer("overlay-layer");
   if (map.getSource("overlay")) map.removeSource("overlay");
-  if (!id) { el("overlay-state").textContent = "· 해당 사건은 판독 지도가 생성되지 않았습니다"; return; }
+}
+
+// MapLibre 는 스타일 로딩이 끝나기 전 addSource/addLayer 에 예외를 던진다.
+// isStyleLoaded() 를 기다리는 방식은 배경 타일이 느린 환경에서 콜백이 쌓여
+// 순서를 보장하지 못했다(늦게 깨어난 옛 요청이 새 선택을 덮어썼다).
+// 그냥 짧은 간격으로 다시 시도한다. 상태가 하나뿐이라 순서가 뒤집히지 않는다.
+async function setOverlay(id) {
+  overlayWanted = id;
+  if (!id) {
+    el("overlay-state").textContent = "· 해당 사건은 판독 지도가 생성되지 않았습니다";
+    try { clearOverlay(); } catch {}
+    return;
+  }
   el("overlay-state").textContent = "";
   const bounds = await fetch(`${DATA}overlays/${id}.json`).then((r) => r.json()).catch(() => null);
-  if (!bounds) return;
-  map.addSource("overlay", { type: "image", url: `${DATA}overlays/${id}.png`, coordinates: bounds.coordinates });
-  map.addLayer({ id: "overlay-layer", type: "raster", source: "overlay", paint: { "raster-opacity": 0.95 } }, "sgg-line");
+  if (!bounds || overlayWanted !== id) return;
+
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (overlayWanted !== id) return;        // 그 사이 다른 사건이 선택됐다
+    try {
+      clearOverlay();
+      map.addSource("overlay", {
+        type: "image", url: `${DATA}overlays/${id}.png`, coordinates: bounds.coordinates,
+      });
+      // 기준 레이어가 아직 없을 수 있다(부팅 중 호출). 그때는 맨 위에 얹고,
+      // sgg-line 이 생기면 그 아래로 내린다. beforeId 를 고집하면
+      // "Cannot add layer before non-existing layer" 로 오버레이가 통째로 빠진다.
+      const before = map.getLayer("sgg-line") ? "sgg-line" : undefined;
+      map.addLayer({ id: "overlay-layer", type: "raster", source: "overlay",
+                     paint: { "raster-opacity": 0.95 } }, before);
+      if (!before) map.once("idle", () => {
+        if (map.getLayer("overlay-layer") && map.getLayer("sgg-line")) {
+          map.moveLayer("overlay-layer", "sgg-line");
+        }
+      });
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  el("overlay-state").textContent = "· 판독 지도를 표시하지 못했습니다";
 }
 
 const stat = (label, value) => `<div class="stat"><span>${label}</span><b>${value}</b></div>`;
@@ -488,8 +536,8 @@ function showEmd(p) {
   el("detail").innerHTML =
     stat("농경지 면적", `${p.area_km2} km²`) +
     stat("필지 수", Number(p.parcels).toLocaleString()) +
-    stat("다년 침수 빈도", pct(p.wet_freq)) +
-    stat("도내 순위", `${p.rank} / ${emdIndex.length || "-"}`) +
+    stat("다년 침수 빈도", p.wet_freq == null ? "관측 부족" : pct(p.wet_freq)) +
+    stat("도내 순위", p.rank == null ? "-" : `${p.rank} / ${emdIndex.length || "-"}`) +
     (p.read_pct != null ? stat("필지 판독률", `${p.read_pct}%`) : "") +
     `<p class="hint">다년 침수 빈도는 강우 관측에서 해당 읍면동 농경지가 침수 후보로
      판정된 평균 비율입니다. 축척을 확대하면 개별 필지를 확인할 수 있습니다.</p>`;
@@ -500,7 +548,8 @@ function showParcel(p) {
   let html = stat("소재지", `${p.sgg_nm} ${p.emd_nm}`);
   html += stat("농경지 구분", p.class_nm);
   html += stat("면적", `${Number(p.area_m2).toLocaleString()} m²`);
-  html += stat("다년 침수 빈도", pct(p.wet_freq));
+  // 관측이 없으면 빈도 0% 가 아니라 모르는 것이다.
+  html += stat("다년 침수 빈도", p.wet_freq == null ? "관측 부족" : pct(p.wet_freq));
   html += stat("관측 횟수", `${p.wet_n_obs ?? "-"} 회`);
   // 사건 목록은 events.json 에서 끌어온다. 화면에 사건을 추가할 때
   // 여기를 같이 고치는 것을 잊으면 필지 상세만 옛 세 건에 멈춘다.
@@ -570,12 +619,18 @@ function setBasemap(kind) {
   const sat = kind === "sat";
   document.querySelectorAll("#basemap-switch button").forEach(
     (b) => b.classList.toggle("on", b.dataset.base === kind));
-  if (map.getLayer("sat")) map.setLayoutProperty("sat", "visibility", sat ? "visible" : "none");
-  if (map.getLayer("sgg-fill")) map.setLayoutProperty("sgg-fill", "visibility", sat ? "none" : "visible");
-  // 위성 위에서는 시군 경계선을 밝게, 단색 배경에서는 원래대로
-  if (map.getLayer("sgg-line")) {
-    map.setPaintProperty("sgg-line", "line-color", sat ? "#ffffff" : "#6b8bb5");
-    map.setPaintProperty("sgg-line", "line-width", sat ? 1.2 : 0.8);
+  // 스타일 로딩 전에는 예외가 난다. 단추만 눌린 채 배경이 그대로면 사용자는
+  // 무엇이 잘못됐는지 알 수 없으므로 준비된 뒤 다시 적용한다.
+  try {
+    setVisible("sat", sat);
+    setVisible("sgg-fill", !sat);
+    // 위성 위에서는 시군 경계선을 밝게, 단색 배경에서는 원래대로
+    if (map.getLayer("sgg-line")) {
+      map.setPaintProperty("sgg-line", "line-color", sat ? "#ffffff" : "#6b8bb5");
+      map.setPaintProperty("sgg-line", "line-width", sat ? 1.2 : 0.8);
+    }
+  } catch {
+    map.once("idle", () => setBasemap(kind));
   }
 }
 
@@ -594,10 +649,13 @@ document.querySelector(".compare").addEventListener("click", (e) => {
   // (07-17~07-20) 밖이라 어떤 호우에도 걸리지 않는다. 위젯이 대상을 명시한다.
   const stormId = e.currentTarget.dataset.storm;
   if (stormId) {
+    // selectStorm 이 지도·범례까지 갱신한다. 여기서 또 부르면 같은 클릭에
+    // 오버레이 요청이 두 번 들어가고 늦게 끝난 쪽이 이긴다.
     selectStorm(stormId, { id, lag: Number(btn.dataset.lag), grade: btn.dataset.grade });
+  } else {
+    setOverlay(id);
+    setParcelBasis(id);
   }
-  setOverlay(id);
-  setParcelBasis(id);
 });
 
 
