@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>충남 농업재해 위성관측 지원</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <header>
@@ -20,16 +20,28 @@
   <aside class="panel left">
     <div class="live" id="live"></div>
 
-    <h2>호우 사건 아카이브</h2>
-    <p class="hint" id="archive-hint"></p>
-    <div class="filters" id="filters">
-      <button data-filter="all" class="on">전체</button>
-      <button data-filter="A">A</button>
-      <button data-filter="B">B</button>
-      <button data-filter="C">C</button>
-      <button data-filter="missed">미관측</button>
+    <div class="tabs" id="tabs">
+      <button data-tab="storms" class="on">호우 사건</button>
+      <button data-tab="emd">읍면동 순위</button>
     </div>
-    <ul id="storm-list"></ul>
+
+    <div id="storms-pane">
+      <p class="hint" id="archive-hint"></p>
+      <div class="filters" id="filters">
+        <button data-filter="all" class="on">전체</button>
+        <button data-filter="A">A</button>
+        <button data-filter="B">B</button>
+        <button data-filter="C">C</button>
+        <button data-filter="missed">미관측</button>
+      </div>
+      <ul id="storm-list"></ul>
+    </div>
+
+    <div id="emd-pane" style="display:none">
+      <p class="hint">젖은 관측 15건(2017~2024)에서 농경지가 침수 후보로 판정된 평균 비율입니다.
+        클릭하면 해당 읍면동으로 이동합니다.</p>
+      <ul id="emd-list" class="ranking"></ul>
+    </div>
   </aside>
 
   <section class="map-wrap">
@@ -38,6 +50,7 @@
       <span class="swatch flood"></span> 침수 후보 (이중반사 z&gt;2)
       <span class="swatch border"></span> 시군 경계
       <span id="overlay-state"></span>
+      <span class="zoom-hint" id="zoom-hint">확대하면 필지 단위로 볼 수 있습니다</span>
     </div>
   </section>
 
@@ -58,6 +71,6 @@
 </main>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

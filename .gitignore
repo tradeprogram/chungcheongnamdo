@@ -46,3 +46,6 @@ service_account*.json
 Thumbs.db
 .vscode/
 .idea/
+
+# 필지 타일은 용량이 커서 제외한다. notebooks/build_parcel_tiles.py 로 재생성
+web/data/parcels/
