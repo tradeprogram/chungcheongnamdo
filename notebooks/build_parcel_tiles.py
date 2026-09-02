@@ -36,7 +36,8 @@ PARCEL_DIR = WEB_DATA / "parcels"
 
 # 지도 표시용 단순화 허용오차 (m). 팜맵 필지는 평균 1,500 m² 라 5m 면 형상이 유지된다.
 PARCEL_TOLERANCE_M = 5.0
-EMD_TOLERANCE_M = 30.0
+EMD_TOLERANCE_M = 100.0
+BUFFER_M = 50.0  # 인접 필지를 붙였다 되돌리는 폭
 MIN_PARCELS_PER_EMD = 30
 # 화면에 띄울 사건 — 필지 단위 침수율을 함께 실어 보낸다
 EVENT_COLS = {"o134_2025-07-19": "e2025", "o127_2025-07-24": "e2025late", "o127_2023-07-23": "e2023"}
@@ -59,24 +60,33 @@ def main() -> None:
     print(f"  필지 {len(parcels):,}, 컬럼 {list(parcels.columns)}")
 
     # --- 읍면동 집계 ---------------------------------------------------
-    print("읍면동 dissolve (수 분 소요)")
-    simple = parcels.copy()
-    simple["geometry"] = simple.geometry.simplify(EMD_TOLERANCE_M)
-    emd = simple.dissolve(
-        by="emd_cd",
-        aggfunc={"emd_nm": "first", "sgg_nm": "first", "area_m2": "sum",
-                 "wet_freq": "mean", "farmmap_id": "size"},
-    ).rename(columns={"farmmap_id": "parcels"}).reset_index()
-    emd = emd[emd["parcels"] >= MIN_PARCELS_PER_EMD].copy()
-    emd["area_km2"] = (emd["area_m2"] / 1e6).round(2)
-    emd["wet_freq"] = emd["wet_freq"].round(4)
+    # 필지를 그냥 dissolve 하면 안 된다. 필지들은 서로 떨어져 있어 dissolve 해도
+    # 하나로 합쳐지지 않고 140만 개 경계가 그대로 남는다 (실제로 265MB 가 나왔다).
+    # 살짝 buffer 해서 인접 필지를 붙인 뒤 되돌리고, 크게 simplify 한다.
+    print("읍면동 경계 생성 (buffer -> union -> simplify)")
+    rows = []
+    for emd_cd, g in parcels.groupby("emd_cd"):
+        if len(g) < MIN_PARCELS_PER_EMD:
+            continue
+        merged = g.geometry.buffer(BUFFER_M).union_all().buffer(-BUFFER_M).simplify(EMD_TOLERANCE_M)
+        rows.append({
+            "emd_cd": emd_cd,
+            "emd_nm": g["emd_nm"].iloc[0],
+            "sgg_nm": g["sgg_nm"].iloc[0],
+            "parcels": len(g),
+            "area_km2": round(g["area_m2"].sum() / 1e6, 2),
+            "wet_freq": round(float(g["wet_freq"].mean()), 4),
+            "geometry": merged,
+        })
+    emd = gpd.GeoDataFrame(rows, geometry="geometry", crs=parcels.crs)
     emd["rank"] = emd["wet_freq"].rank(ascending=False, method="min").astype("Int64")
-    emd = emd.drop(columns=["area_m2"])
 
     WEB_DATA.mkdir(parents=True, exist_ok=True)
-    emd.to_crs(4326).to_file(WEB_DATA / "emd.geojson", driver="GeoJSON")
-    size_mb = (WEB_DATA / "emd.geojson").stat().st_size / 1e6
-    print(f"  읍면동 {len(emd)}개 -> emd.geojson ({size_mb:.1f} MB)")
+    out_path = WEB_DATA / "emd.geojson"
+    if out_path.exists():
+        out_path.unlink()
+    emd.to_crs(4326).to_file(out_path, driver="GeoJSON", COORDINATE_PRECISION=5)
+    print(f"  읍면동 {len(emd)}개 -> emd.geojson ({out_path.stat().st_size/1e6:.1f} MB)")
 
     # --- 읍면동별 필지 ---------------------------------------------------
     print("읍면동별 필지 파일 생성")

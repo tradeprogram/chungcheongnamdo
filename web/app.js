@@ -76,7 +76,6 @@ async function boot() {
       paint: { "line-color": "#8ba6c4", "line-width": 0.5, "line-opacity": 0.6 },
       layout: { visibility: "none" },
     });
-    map.on("click", "emd-fill", (e) => showEmd(e.features[0].properties));
   }
 
   map.addSource("sgg", { type: "geojson", data: sgg });
@@ -101,9 +100,20 @@ async function boot() {
     id: "parcel-line", type: "line", source: "parcels",
     paint: { "line-color": "#0b1218", "line-width": 0.3 },
   });
-  map.on("click", "parcel-fill", (e) => showParcel(e.features[0].properties));
-  map.on("mouseenter", "parcel-fill", () => (map.getCanvas().style.cursor = "pointer"));
-  map.on("mouseleave", "parcel-fill", () => (map.getCanvas().style.cursor = ""));
+  // 레이어 지정 핸들러(map.on("click","parcel-fill",...)) 대신
+  // 지도 전체 클릭에서 직접 조회한다. 레이어가 아직 없거나 순서가 바뀌어도 동작한다.
+  map.on("click", (e) => {
+    const layers = ["parcel-fill", "emd-fill"].filter((l) => map.getLayer(l));
+    const hit = map.queryRenderedFeatures(e.point, { layers })[0];
+    if (!hit) return;
+    if (hit.layer.id === "parcel-fill") showParcel(hit.properties);
+    else showEmd(hit.properties);
+  });
+  map.on("mousemove", (e) => {
+    const layers = ["parcel-fill", "emd-fill"].filter((l) => map.getLayer(l));
+    const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : null;
+    map.getCanvas().style.cursor = hit ? "pointer" : "";
+  });
   map.on("moveend", maybeLoadParcels);
 
   renderStats();
@@ -147,28 +157,24 @@ async function maybeLoadParcels() {
   map.setLayoutProperty("parcel-line", "visibility", on ? "visible" : "none");
   if (!on) { el("zoom-hint").textContent = "확대하면 필지 단위로 볼 수 있습니다"; return; }
 
+  // 읍면동 레이어가 아니라 인덱스의 bbox 로 찾는다.
+  // 레이어 렌더 여부에 의존하면 choropleth 를 끈 상태에서 필지가 안 뜬다.
   const c = map.getCenter();
-  const hit = map.queryRenderedFeatures(map.project(c), { layers: ["emd-fill"] })[0]
-    || queryEmdAt(c);
-  if (!hit) { el("zoom-hint").textContent = "이 위치의 필지 데이터가 없습니다"; return; }
-  const code = hit.properties ? hit.properties.emd_cd : hit.emd_cd;
-  if (code === loadedEmd) return;
+  const hit = emdIndex.find(
+    (e) => c.lng >= e.bbox[0] && c.lng <= e.bbox[2] && c.lat >= e.bbox[1] && c.lat <= e.bbox[3]
+  );
+  if (!hit) { el("zoom-hint").textContent = "이 위치에는 농경지 필지가 없습니다"; return; }
+  if (hit.emd_cd === loadedEmd) return;
 
-  el("zoom-hint").textContent = "필지 불러오는 중…";
+  el("zoom-hint").textContent = `${hit.sgg_nm} ${hit.emd_nm} 필지 불러오는 중…`;
   try {
-    const fc = await fetch(`${DATA}parcels/${code}.json`).then((r) => r.json());
+    const fc = await fetch(`${DATA}parcels/${hit.emd_cd}.json`).then((r) => r.json());
     map.getSource("parcels").setData(fc);
-    loadedEmd = code;
-    el("zoom-hint").textContent = `${fc.features[0]?.properties.emd_nm ?? code} · 필지 ${fc.features.length.toLocaleString()}개`;
+    loadedEmd = hit.emd_cd;
+    el("zoom-hint").textContent = `${hit.sgg_nm} ${hit.emd_nm} · 필지 ${fc.features.length.toLocaleString()}개`;
   } catch {
     el("zoom-hint").textContent = "이 읍면동의 필지 파일이 없습니다";
   }
-}
-
-function queryEmdAt(lnglat) {
-  const src = map.getSource("emd");
-  if (!src || !src._data) return null;
-  return null; // emd-fill 이 렌더되지 않은 경우는 건너뛴다
 }
 
 function renderStats() {
