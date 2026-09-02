@@ -36,6 +36,11 @@ const mapReady = new Promise((resolve) => {
 new ResizeObserver(() => map.resize()).observe(el("map"));
 requestAnimationFrame(() => map.resize());
 setTimeout(() => map.resize(), 200);
+// 배경 탭에서 열면 컨테이너가 0px 로 잡히고, 그리기가 없으니 load 도 발생하지 않는다.
+// 탭이 앞으로 나오는 순간 크기를 다시 잡아 준다.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) map.resize();
+});
 
 // 사건별 필지 침수율이 담긴 속성 이름. build_parcel_tiles.py 의 EVENT_COLS 와 같아야 한다.
 const PARCEL_FIELD = {
@@ -211,16 +216,26 @@ function addLabels(sgg) {
 
 // --- 필지 지연 로딩 ---------------------------------------------------
 // 143만 필지를 한 번에 보내지 않는다. 화면 중심이 속한 읍면동 파일 하나만 받는다.
+// setLayoutProperty 는 스타일 로딩이 끝나기 전에 부르면 예외를 던진다.
+// moveend 는 그 전에도 날아오므로, 가시성 설정 하나 때문에 필지 로딩 전체가
+// 중단되지 않도록 분리한다. 배경 타일이 늦거나 실패해도 필지는 떠야 한다.
+function setVisible(layer, on) {
+  if (!map.getLayer(layer)) return;
+  try {
+    map.setLayoutProperty(layer, "visibility", on ? "visible" : "none");
+  } catch {
+    map.once("idle", () => setVisible(layer, on));
+  }
+}
+
 async function maybeLoadParcels() {
   const z = map.getZoom();
   const on = z >= PARCEL_ZOOM;
-  map.setLayoutProperty("parcel-fill", "visibility", on ? "visible" : "none");
-  map.setLayoutProperty("parcel-line", "visibility", on ? "visible" : "none");
+  setVisible("parcel-fill", on);
+  setVisible("parcel-line", on);
   // 필지 축척에서는 래스터 오버레이를 끈다. 20m 격자를 확대하면 뭉개져 필지를 가리고,
   // 이미 필지 색이 같은 사건의 침수율을 담고 있다.
-  if (map.getLayer("overlay-layer")) {
-    map.setLayoutProperty("overlay-layer", "visibility", on ? "none" : "visible");
-  }
+  setVisible("overlay-layer", !on);
   if (!on) { el("zoom-hint").textContent = "축척을 확대하면 필지 단위 결과가 표시됩니다"; return; }
 
   // 읍면동 레이어가 아니라 인덱스의 bbox 로 찾는다.
