@@ -37,6 +37,13 @@ new ResizeObserver(() => map.resize()).observe(el("map"));
 requestAnimationFrame(() => map.resize());
 setTimeout(() => map.resize(), 200);
 
+// 사건별 필지 침수율이 담긴 속성 이름. build_parcel_tiles.py 의 EVENT_COLS 와 같아야 한다.
+const PARCEL_FIELD = {
+  "o134_2025-07-19": "e2025",
+  "o127_2025-07-24": "e2025late",
+  "o127_2023-07-23": "e2023",
+};
+
 const STATUS = {
   observed_good: { text: "적기 관측", cls: "A" },
   observed_late: { text: "지연 관측", cls: "B" },
@@ -101,14 +108,7 @@ async function boot() {
   // 위성 영상 위에 얹는 마스크이므로 반투명으로 둔다. 영상이 비쳐야 농지임이 확인된다.
   map.addLayer({
     id: "parcel-fill", type: "fill", source: "parcels",
-    paint: {
-      "fill-color": ["case",
-        [">=", ["coalesce", ["get", "e2025"], -1], 0.5], "#2563eb",
-        [">=", ["coalesce", ["get", "e2025"], -1], 0.2], "#60a5fa",
-        ["==", ["get", "class_nm"], "논"], "#f5d90a",
-        "#4ade80"],
-      "fill-opacity": 0.55,
-    },
+    paint: { "fill-color": parcelPaint(null), "fill-opacity": 0.55 },
   });
   map.addLayer({
     id: "parcel-line", type: "line", source: "parcels",
@@ -142,6 +142,18 @@ async function boot() {
   // 초기 상태를 한 번 맞춘다. moveend 에만 의존하면 boot 이 끝나기 전에 지도를 옮긴 경우
   // (예: 링크로 특정 지역 진입) 필지가 영영 로드되지 않는다.
   maybeLoadParcels();
+}
+
+// 필지 색 규칙. 선택한 사건의 침수율 속성(field)으로 칠한다.
+// field 가 없으면(그 사건의 판독 결과가 없으면) 농경지 구분만 보여준다.
+function parcelPaint(field) {
+  const value = field ? ["coalesce", ["get", field], -1] : -1;
+  return ["case",
+    ["==", value, -1], "#94a3b8",              // 판독 불가 또는 판독 결과 없음
+    [">=", value, 0.5], "#2563eb",             // 침수율 50% 이상
+    [">=", value, 0.2], "#60a5fa",             // 20~50%
+    ["==", ["get", "class_nm"], "논"], "#f5d90a",
+    "#4ade80"];
 }
 
 // 시군명은 symbol 레이어 대신 HTML 마커로 그린다.
@@ -379,6 +391,24 @@ function selectStorm(id) {
   }
   el("detail").innerHTML = html;
   setOverlay(ev ? ev.id : null);
+  setParcelBasis(ev ? ev.id : null);
+}
+
+// 필지 색과 범례 표기를 선택한 사건에 맞춘다.
+// 이것을 하지 않으면 사건을 바꿔도 필지 색이 그대로여서 지도가 선택과 무관해 보인다.
+function setParcelBasis(eventId) {
+  const field = eventId ? PARCEL_FIELD[eventId] || null : null;
+  if (map.getLayer("parcel-fill")) {
+    map.setPaintProperty("parcel-fill", "fill-color", parcelPaint(field));
+  }
+  const basis = el("legend-basis");
+  if (!basis) return;
+  if (field) {
+    const ev = events.find((e) => e.id === eventId);
+    basis.textContent = ` · ${ev ? ev.observed_kst.slice(0, 10) : eventId} 관측 기준`;
+  } else {
+    basis.textContent = " · 선택 사건의 필지 판독 결과 없음";
+  }
 }
 
 function showEmd(p) {
@@ -465,7 +495,7 @@ el("basemap-switch").addEventListener("click", (e) => {
 
 document.querySelector(".compare").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-overlay]");
-  if (btn) setOverlay(btn.dataset.overlay);
+  if (btn) { setOverlay(btn.dataset.overlay); setParcelBasis(btn.dataset.overlay); }
 });
 
 
