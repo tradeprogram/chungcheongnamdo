@@ -161,15 +161,20 @@ def main() -> None:
         Patch(facecolor="#1d4ed8", alpha=0.62, edgecolor="white", label="침수율 50% 이상"),
         Patch(facecolor="#60a5fa", alpha=0.62, edgecolor="white", label="20~50%"),
         Patch(facecolor="#facc15", alpha=0.62, edgecolor="white", label="20% 미만"),
-        Patch(facecolor="#9ca3af", alpha=0.62, edgecolor="white", label="판독 불가(표본 부족)"),
     ]
+    # 판독 불가 항목은 두지 않는다. 마스크를 걷어낸 뒤 이 구역의 필지는 전량 판독된다.
+    # 실제로 회색이 나오는 필지가 있으면 그때 범례에 되살린다.
+    if any(not np.isfinite(v) for e in EVENTS for v in sub_m[e[0]]):
+        handles.append(Patch(facecolor="#9ca3af", alpha=0.62, edgecolor="white", label="판독 불가"))
     fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False, fontsize=10,
                bbox_to_anchor=(0.5, -0.005))
     fig.suptitle(
         f"같은 호우(2025-07-17 peak), 같은 농경지 — 관측 시각에 따른 판별 결과 차이  ·  "
         f"{sub_m['sgg_nm'].iloc[0]} {args.emd}",
         fontsize=13, y=0.98)
-    fig.text(0.5, 0.055, "배경: Esri World Imagery  |  필지: 농림축산식품부 팜맵  |  판독: Sentinel-1 SAR",
+    fig.text(0.5, 0.055,
+             f"표시 필지 {len(sub_m):,}개 전량 판독  |  배경: Esri World Imagery"
+             "  |  필지: 농림축산식품부 팜맵  |  판독: Sentinel-1 SAR",
              ha="center", fontsize=8.5, color="#475569")
     fig.tight_layout(rect=[0, 0.07, 1, 0.95])
 
