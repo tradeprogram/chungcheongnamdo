@@ -194,3 +194,95 @@ def parcel_means(
 
     denom = pd.Series(counts[1:]).replace(0, np.nan)
     return pd.DataFrame({name: sums[name][1:] / denom for name in names})
+
+
+def parcel_stats_v2(
+    raster_path: Path,
+    parcels: gpd.GeoDataFrame,
+    index: np.ndarray | None = None,
+    z_threshold: float = Z_THRESHOLD,
+    chunk_rows: int = 4096,
+    min_pixels: int = 1,
+) -> pd.DataFrame:
+    """필지별 침수 통계 — 전 필지에 값을 낸다.
+
+    parcel_stats 와 다른 점 세 가지.
+
+    1. **래스터의 valid 밴드를 쓰지 않는다.** 기존 마스크(경사 5도 미만, HAND 20m 미만)는
+       일반 홍수 매핑용 조건인데 농경지의 32%를 잘라냈다. 밭은 중앙값 경사가 6.2도라
+       절반 이상이 배제됐다. 유효성은 zvv/zvh 가 유한한지로만 판단하고,
+       경사는 필지 속성으로 따로 붙여 신뢰도 표기에 쓴다.
+
+    2. **격자에 잡히지 않은 필지는 대표점에서 값을 읽는다.** 20m 격자에서 9.8% 는
+       픽셀이 하나도 배정되지 않았다(작은 필지가 인접 필지에 밀림). 이 경우
+       폴리곤 내부가 보장된 대표점 한 곳을 읽고 method="point" 로 표시한다.
+
+    3. `method` 와 `n_valid` 를 함께 내보내 값의 근거를 구분할 수 있게 한다.
+       면적비율(area)과 점 표본(point)은 신뢰도가 다르므로 화면에서 구분해야 한다.
+    """
+    with rasterio.open(raster_path) as src:
+        if parcels.crs is None or str(parcels.crs) != str(src.crs):
+            parcels = parcels.to_crs(src.crs)
+        bands = band_index(src)
+        n = len(parcels)
+
+        if index is None:
+            index = build_index(raster_path, parcels)
+        elif index.shape != (src.height, src.width):
+            raise ValueError(f"index shape {index.shape} != raster {(src.height, src.width)}")
+
+        acc = {k: np.zeros(n + 1, dtype=np.float64)
+               for k in ("n_pixels", "n_valid", "n_open", "n_double", "sum_zvv", "sum_zvh")}
+
+        for row0 in range(0, src.height, chunk_rows):
+            rows = min(chunk_rows, src.height - row0)
+            window = rasterio.windows.Window(0, row0, src.width, rows)
+            zvv = src.read(bands["zvv"], window=window).astype(np.float32).ravel()
+            zvh = src.read(bands["zvh"], window=window).astype(np.float32).ravel()
+            flat = index[row0 : row0 + rows].ravel()
+
+            keep = flat > 0
+            if not keep.any():
+                continue
+            fi, zv, zh = flat[keep], zvv[keep], zvh[keep]
+            ok = np.isfinite(zv) & np.isfinite(zh)
+
+            acc["n_pixels"] += np.bincount(fi, minlength=n + 1)
+            acc["n_valid"] += np.bincount(fi[ok], minlength=n + 1)
+            acc["n_open"] += np.bincount(fi[ok & (zv < -z_threshold) & (zh < -z_threshold)], minlength=n + 1)
+            acc["n_double"] += np.bincount(fi[ok & (zv > z_threshold) & (zh > z_threshold)], minlength=n + 1)
+            acc["sum_zvv"] += np.bincount(fi[ok], weights=zv[ok], minlength=n + 1)
+            acc["sum_zvh"] += np.bincount(fi[ok], weights=zh[ok], minlength=n + 1)
+
+        out = pd.DataFrame({k: v[1:] for k, v in acc.items()})
+        out["method"] = np.where(out["n_valid"] >= min_pixels, "area", "point")
+
+        # 면적 집계가 안 된 필지는 대표점에서 읽는다
+        gap = out["n_valid"] < min_pixels
+        if gap.any():
+            pts = parcels.loc[gap.to_numpy(), "geometry"].representative_point()
+            rows_i, cols_i = rasterio.transform.rowcol(src.transform, pts.x.to_numpy(), pts.y.to_numpy())
+            rows_i = np.clip(np.asarray(rows_i), 0, src.height - 1)
+            cols_i = np.clip(np.asarray(cols_i), 0, src.width - 1)
+            zvv_full = src.read(bands["zvv"])
+            zvh_full = src.read(bands["zvh"])
+            pv, ph = zvv_full[rows_i, cols_i], zvh_full[rows_i, cols_i]
+            good = np.isfinite(pv) & np.isfinite(ph)
+            idx = np.where(gap.to_numpy())[0]
+            out.loc[idx[good], "n_valid"] = 1
+            out.loc[idx[good], "sum_zvv"] = pv[good]
+            out.loc[idx[good], "sum_zvh"] = ph[good]
+            out.loc[idx[good], "n_double"] = ((pv[good] > z_threshold) & (ph[good] > z_threshold)).astype(float)
+            out.loc[idx[good], "n_open"] = ((pv[good] < -z_threshold) & (ph[good] < -z_threshold)).astype(float)
+
+    denom = out["n_valid"].replace(0, np.nan)
+    out["mean_zvv"] = out["sum_zvv"] / denom
+    out["mean_zvh"] = out["sum_zvh"] / denom
+    out["open_fraction"] = out["n_open"] / denom
+    out["double_fraction"] = out["n_double"] / denom
+    out = out.drop(columns=["sum_zvv", "sum_zvh"])
+
+    for col in ("farmmap_id", "class_nm", "sgg_nm", "emd_cd", "emd_nm", "area_m2"):
+        if col in parcels.columns:
+            out[col] = parcels[col].to_numpy()
+    return out

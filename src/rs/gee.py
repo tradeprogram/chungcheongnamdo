@@ -86,8 +86,18 @@ def s1_collection(
     )
 
 
-def analysis_mask(max_slope_deg: float = 5.0, max_hand_m: float = 20.0) -> ee.Image:
-    """영구수역·급경사·고지대를 제외한 분석 유효역.
+def analysis_mask(max_slope_deg: float = 20.0, max_hand_m: float | None = None) -> ee.Image:
+    """영구수역·급경사를 제외한 분석 유효역.
+
+    **기본값을 바꾼 이력이 있다. 경사 5도 / HAND 20m 는 농경지에 쓰면 안 된다.**
+    그 조합은 충남 농경지 필지의 45%를 잘라냈고, 특히 밭은 63%가 배제됐다.
+    농경지 경사 중앙값은 4.05도지만 밭은 6.16도, 90분위는 15.41도다.
+    5도 기준은 밭을 구조적으로 제외하는 조건이었다.
+
+    지금은 경사 20도를 쓴다. Sentinel-1 IW 입사각이 30~45도이므로 그 이상에서
+    layover/shadow 가 문제되며, 20도 이하에 농경지의 97.5%가 들어온다.
+    HAND 조건은 기본적으로 쓰지 않는다. 홍수터 근접은 필지 상태를 보고할 때
+    배제할 이유가 아니다 — 고지대 밭도 젖으면 젖은 것이다.
 
     경사는 반드시 `covariates.terrain_slope()` 를 쓴다. mosaic 에 ee.Terrain.slope 를
     바로 걸면 기본 투영 때문에 경사가 0 근처로 계산돼 이 마스크가 조용히 무력화된다.
@@ -95,9 +105,10 @@ def analysis_mask(max_slope_deg: float = 5.0, max_hand_m: float = 20.0) -> ee.Im
     from src.features.covariates import terrain_slope
 
     permanent = ee.Image(GSW).select("occurrence").unmask(0).gte(50)
-    hand = ee.Image(MERIT_HYDRO).select("hnd")
-    slope = terrain_slope()
-    return permanent.Not().And(slope.lt(max_slope_deg)).And(hand.lt(max_hand_m)).rename("valid")
+    mask = permanent.Not().And(terrain_slope().lt(max_slope_deg))
+    if max_hand_m is not None:
+        mask = mask.And(ee.Image(MERIT_HYDRO).select("hnd").lt(max_hand_m))
+    return mask.rename("valid")
 
 
 def cropland_mask() -> ee.Image:
