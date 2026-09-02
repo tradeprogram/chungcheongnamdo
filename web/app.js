@@ -58,18 +58,25 @@ async function boot() {
   // 자료 파일은 갱신 주기가 짧다. 브라우저 캐시에 걸리면 옛 인덱스를 읽어
   // 필지가 로드되지 않는 식으로 조용히 깨지므로 캐시를 쓰지 않는다.
   const get = (name) => fetch(DATA + name, { cache: "no-cache" }).then((r) => r.json());
-  const [s, ev, st, sgg, emd, idx] = await Promise.all([
+  const [s, ev, st, sgg, emd, idx, susMeta] = await Promise.all([
     get("storms.json"),
     get("events.json"),
     get("stats.json"),
     get("sgg.geojson"),
     get("emd.geojson").catch(() => null),
     get("parcel_index.json").catch(() => []),
+    get("sus_meta.json").catch(() => null),
   ]);
   storms = s.sort((a, b) => (a.peak_date < b.peak_date ? 1 : -1));
   events = ev;
   stats = st;
   emdIndex = idx;
+  if (susMeta && susMeta.wet_obs_max) {
+    el("region-hint").textContent =
+      `표시된 수치는 강우 관측 최대 ${susMeta.wet_obs_max}회에서 해당 지역 농경지가 ` +
+      "침수 후보로 판정된 평균 비율입니다. 시군 항목을 선택하면 하위 읍면동이 전개되며, " +
+      "읍면동 항목을 선택하면 지도가 해당 지역으로 이동합니다.";
+  }
 
   await mapReady;
 
@@ -442,8 +449,9 @@ function showEmd(p) {
     stat("필지 수", Number(p.parcels).toLocaleString()) +
     stat("다년 침수 빈도", pct(p.wet_freq)) +
     stat("도내 순위", `${p.rank} / ${emdIndex.length || "-"}`) +
-    `<p class="hint">강우 관측 15회에서 해당 읍면동 농경지가 침수 후보로 판정된 평균 비율입니다.
-     축척을 확대하면 개별 필지를 확인할 수 있습니다.</p>`;
+    (p.read_pct != null ? stat("필지 판독률", `${p.read_pct}%`) : "") +
+    `<p class="hint">다년 침수 빈도는 강우 관측에서 해당 읍면동 농경지가 침수 후보로
+     판정된 평균 비율입니다. 축척을 확대하면 개별 필지를 확인할 수 있습니다.</p>`;
 }
 
 function showParcel(p) {

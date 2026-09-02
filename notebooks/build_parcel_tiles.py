@@ -91,6 +91,7 @@ def main() -> None:
     # 필지를 그냥 dissolve 하면 안 된다. 필지들은 서로 떨어져 있어 dissolve 해도
     # 하나로 합쳐지지 않고 140만 개 경계가 그대로 남는다 (실제로 265MB 가 나왔다).
     # 살짝 buffer 해서 인접 필지를 붙인 뒤 되돌리고, 크게 simplify 한다.
+    WEB_DATA.mkdir(parents=True, exist_ok=True)
     print("읍면동 경계 생성 (buffer -> union -> simplify)")
     rows = []
     for emd_cd, g in parcels.groupby("emd_cd"):
@@ -109,6 +110,13 @@ def main() -> None:
             "geometry": merged,
         })
     emd = gpd.GeoDataFrame(rows, geometry="geometry", crs=parcels.crs)
+
+    # 화면 문구에 관측 횟수를 하드코딩하면 수출 규모를 바꿀 때마다 조용히 거짓말이 된다.
+    obs = parcels["wet_n_obs"].dropna()
+    (WEB_DATA / "sus_meta.json").write_text(json.dumps({
+        "wet_obs_max": int(obs.max()) if len(obs) else None,
+        "parcels_with_freq_pct": round(float((obs > 0).mean() * 100), 1) if len(obs) else 0.0,
+    }, ensure_ascii=False), encoding="utf-8")
     emd["rank"] = emd["wet_freq"].rank(ascending=False, method="min").astype("Int64")
 
     WEB_DATA.mkdir(parents=True, exist_ok=True)
