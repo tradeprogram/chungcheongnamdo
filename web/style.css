@@ -381,3 +381,10 @@ ul.ranking li:hover { background: var(--glass-2); border-radius: 7px; }
 .help-table td:nth-child(2) { width: 80px; color: var(--text); font-weight: 600; }
 
 .help-foot { margin: 17px 0 0; font-size: 11px; color: var(--muted); line-height: 1.65; }
+
+
+/* 범례에서 채움색과 테두리색을 구분해 보이기 위한 빈 사각형 */
+.legend .sw-line {
+  background: transparent;
+  border: 2px solid #fff;
+}

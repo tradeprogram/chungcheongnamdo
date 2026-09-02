@@ -65,7 +65,12 @@ def main() -> None:
         if index is None:
             print("  필지 인덱스 래스터화...")
             index = zonal.build_index(path, parcels)
-        stats = zonal.parcel_means(path, parcels, index=index, names=["n_flag", "n_obs", "freq"])
+        # parcel_means 는 격자에 픽셀이 배정되지 않은 필지에 NaN 을 남겼다(20m에서 9.8%).
+        # v2 는 그 필지를 대표점에서 읽고 method 로 구분한다.
+        stats = zonal.parcel_means_v2(path, parcels, names=["n_flag", "n_obs", "freq"], index=index)
+        got = stats["n_obs"].notna() & (stats["n_obs"] > 0)
+        print(f"  {tag}: 값이 있는 필지 {got.mean()*100:.1f}% "
+              f"(면적집계 {(stats['method']=='area').mean()*100:.1f}%)")
         frames.append(stats.rename(columns={c: f"{tag}_{c}" for c in stats.columns}))
 
     out = pd.concat(frames, axis=1)

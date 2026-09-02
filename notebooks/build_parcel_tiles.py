@@ -49,14 +49,33 @@ def main() -> None:
         FARMMAP, columns=["farmmap_id", "class_nm", "sgg_nm", "emd_cd", "emd_nm", "area_m2", "geometry"]
     ).reset_index(drop=True)
 
-    sus = pd.read_parquet(SUS, columns=["farmmap_id", "wet_freq", "dry_freq", "wet_n_obs"])
-    parcels = parcels.merge(sus, on="farmmap_id", how="left")
+    sus_cols = ["farmmap_id", "wet_freq", "dry_freq", "wet_n_obs"]
+    sus = pd.read_parquet(SUS)
+    if "wet_method" in sus.columns:
+        sus_cols.append("wet_method")
+    parcels = parcels.merge(sus[sus_cols], on="farmmap_id", how="left")
 
-    stats = pd.read_parquet(STATS, columns=["farmmap_id", "event_id", "double_fraction", "n_valid"])
+    stats = pd.read_parquet(STATS)
     stats = stats[stats["event_id"].isin(EVENT_COLS)]
     wide = stats.pivot_table(index="farmmap_id", columns="event_id", values="double_fraction")
     wide = wide.rename(columns=EVENT_COLS)
     parcels = parcels.merge(wide, on="farmmap_id", how="left")
+
+    # 판독 근거를 필지에 싣는다. 면적 집계(area)와 대표점 표본(point)은 근거의 등급이
+    # 다르므로 같은 색으로 뭉뚱그리지 않는다. 격자 미포착 여부는 사건이 아니라
+    # 필지 형상에서 결정되므로 대표 사건 하나의 method 를 대표값으로 쓴다.
+    primary = next(iter(EVENT_COLS))
+    if "method" in stats.columns:
+        base = stats[stats["event_id"] == primary][["farmmap_id", "method", "n_valid", "steep"]]
+        base = base.rename(columns={"method": "mth", "n_valid": "npx", "steep": "stp"})
+        parcels = parcels.merge(base, on="farmmap_id", how="left")
+        parcels["mth"] = parcels["mth"].map({"area": 0, "point": 1}).fillna(2).astype("int8")
+        parcels["stp"] = parcels["stp"].fillna(False).astype("int8")
+        parcels["npx"] = parcels["npx"].fillna(0).round(0).astype("int32")
+        n = len(parcels)
+        print(f"  판독 근거 — 면적집계 {(parcels['mth']==0).sum()/n*100:.1f}% / "
+              f"점표본 {(parcels['mth']==1).sum()/n*100:.1f}% / "
+              f"불가 {(parcels['mth']==2).sum()/n*100:.1f}% / 급경사 {parcels['stp'].sum()/n*100:.1f}%")
     print(f"  필지 {len(parcels):,}, 컬럼 {list(parcels.columns)}")
 
     # --- 읍면동 집계 ---------------------------------------------------
@@ -76,6 +95,8 @@ def main() -> None:
             "parcels": len(g),
             "area_km2": round(g["area_m2"].sum() / 1e6, 2),
             "wet_freq": round(float(g["wet_freq"].mean()), 4),
+            # 읍면동 단위 판독률 — 화면에서 근거의 두께를 함께 보여준다
+            "read_pct": round(float((g["mth"] < 2).mean() * 100), 1) if "mth" in g else None,
             "geometry": merged,
         })
     emd = gpd.GeoDataFrame(rows, geometry="geometry", crs=parcels.crs)
@@ -101,6 +122,7 @@ def main() -> None:
     index = []
     for emd_cd, group in keep.groupby("emd_cd"):
         cols = ["farmmap_id", "class_nm", "emd_nm", "sgg_nm", "area_m2", "wet_freq", "wet_n_obs"]
+        cols += [c for c in ("mth", "npx", "stp") if c in group.columns]
         cols += [c for c in EVENT_COLS.values() if c in group.columns]
         out = group[cols + ["geometry"]].copy()
         for c in ("wet_freq", *EVENT_COLS.values()):

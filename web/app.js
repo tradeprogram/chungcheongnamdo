@@ -112,7 +112,20 @@ async function boot() {
   });
   map.addLayer({
     id: "parcel-line", type: "line", source: "parcels",
-    paint: { "line-color": "#ffffff", "line-width": 0.6, "line-opacity": 0.55 },
+    // 테두리로 **판독 근거**를 구분한다. 채움색은 침수율을 나타내므로
+    // 근거의 등급까지 같은 채널에 실으면 두 정보가 섞인다.
+    //   흰색  면적 집계 (필지 안 화소를 모아 비율을 냄)
+    //   주황  대표점 표본 (화소가 배정되지 않아 한 점만 읽음)
+    //   적색  급경사 20도 초과 (SAR 기하 왜곡으로 신뢰도 낮음)
+    paint: {
+      "line-color": ["case",
+        ["==", ["get", "stp"], 1], "#ef4444",
+        ["==", ["get", "mth"], 1], "#f59e0b",
+        "#ffffff"],
+      "line-width": ["case",
+        ["any", ["==", ["get", "stp"], 1], ["==", ["get", "mth"], 1]], 1.1, 0.6],
+      "line-opacity": 0.75,
+    },
   });
   // 레이어 지정 핸들러(map.on("click","parcel-fill",...)) 대신
   // 지도 전체 클릭에서 직접 조회한다. 레이어가 아직 없거나 순서가 바뀌어도 동작한다.
@@ -438,8 +451,17 @@ function showParcel(p) {
   html += stat("2025-07-19 (지연 40시간)", pct(p.e2025));
   html += stat("2025-07-24 (지연 172시간)", pct(p.e2025late));
   html += stat("2023-07-23 (지연 7시간)", pct(p.e2023));
-  html += `<p class="hint">침수율은 필지 내에서 이중반사 지표(z&gt;2)로 판정된 픽셀의 비율입니다.
-    판독 단위가 20m 격자이므로 면적이 작은 필지는 표본이 부족할 수 있습니다.</p>`;
+  const basisText = {
+    0: `면적 집계 · 유효 화소 ${p.npx ?? "-"}개`,
+    1: "대표점 표본 · 화소 1개",
+    2: "판독 불가",
+  }[p.mth] ?? "판독 근거 미기재";
+  html += `<div class="sep">판독 근거</div>`;
+  html += stat("집계 방식", basisText);
+  html += stat("지형 신뢰도", p.stp === 1 ? "낮음 (경사 20° 초과)" : "정상");
+  html += `<p class="hint">침수율은 필지 내에서 이중반사 지표(z&gt;2)로 판정된 화소의 비율입니다.
+    필지가 20m 격자에 화소를 배정받지 못한 경우 폴리곤 내부의 대표점 한 곳을 읽으며,
+    이때의 값은 면적 비율이 아니라 단일 표본이므로 근거의 등급이 다릅니다.</p>`;
   el("detail").innerHTML = html;
 }
 

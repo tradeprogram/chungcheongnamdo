@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -22,6 +23,10 @@ import ee
 import httpx
 import rasterio
 from rasterio.merge import merge
+
+RETRY_STATUS = {429, 500, 502, 503, 504}
+MAX_RETRY = 5
+BACKOFF_S = 20
 
 
 def _tiles(bounds: tuple[float, float, float, float], tile_deg: float) -> list[tuple[float, float, float, float]]:
@@ -65,9 +70,25 @@ def download_image(
                 url = image.getDownloadURL(
                     {"scale": scale, "region": region, "crs": crs, "format": "GEO_TIFF", "filePerBand": False}
                 )
-                resp = client.get(url)
-                resp.raise_for_status()
-                blob = resp.content
+                # GEE 는 간헐적으로 503/429 를 낸다. 몇 장 실패했다고 전체를 버리지 않는다.
+                blob = None
+                for attempt in range(1, MAX_RETRY + 1):
+                    try:
+                        resp = client.get(url)
+                        resp.raise_for_status()
+                        blob = resp.content
+                        break
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code not in RETRY_STATUS or attempt == MAX_RETRY:
+                            raise
+                        wait = BACKOFF_S * attempt
+                        print(f"    타일 {i} {exc.response.status_code} — {wait}s 후 재시도 ({attempt}/{MAX_RETRY})")
+                        time.sleep(wait)
+                        # URL 은 만료될 수 있으므로 다시 발급받는다
+                        url = image.getDownloadURL(
+                            {"scale": scale, "region": region, "crs": crs,
+                             "format": "GEO_TIFF", "filePerBand": False}
+                        )
 
                 tile_path = tmp / f"tile_{i:04d}.tif"
                 if blob[:2] == b"PK":  # zip 으로 오는 경우

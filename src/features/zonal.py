@@ -286,3 +286,70 @@ def parcel_stats_v2(
         if col in parcels.columns:
             out[col] = parcels[col].to_numpy()
     return out
+
+
+def parcel_means_v2(
+    raster_path: Path,
+    parcels: gpd.GeoDataFrame,
+    names: list[str],
+    index: np.ndarray | None = None,
+    chunk_rows: int = 4096,
+) -> pd.DataFrame:
+    """연속값 래스터의 필지 평균 — 격자에 잡히지 않은 필지는 대표점에서 읽는다.
+
+    parcel_means 는 픽셀이 배정되지 않은 필지에 NaN 을 남겼다. 20m 격자에서
+    9.8%(140,279필지)가 여기 해당한다. 침수빈도 choropleth 가 그만큼 비어 있었다.
+    parcel_stats_v2 와 같은 방식으로 대표점 표본을 채우고 `method` 로 구분한다.
+    """
+    with rasterio.open(raster_path) as src:
+        if parcels.crs is None or str(parcels.crs) != str(src.crs):
+            parcels = parcels.to_crs(src.crs)
+        n = len(parcels)
+        if index is None:
+            index = build_index(raster_path, parcels)
+        elif index.shape != (src.height, src.width):
+            raise ValueError(f"index shape {index.shape} != raster {(src.height, src.width)}")
+
+        count = np.zeros(n + 1, dtype=np.float64)
+        sums = {name: np.zeros(n + 1, dtype=np.float64) for name in names}
+
+        for row0 in range(0, src.height, chunk_rows):
+            rows = min(chunk_rows, src.height - row0)
+            window = rasterio.windows.Window(0, row0, src.width, rows)
+            data = {name: src.read(i + 1, window=window).astype(np.float32).ravel()
+                    for i, name in enumerate(names)}
+            flat = index[row0 : row0 + rows].ravel()
+            keep = flat > 0
+            if not keep.any():
+                continue
+            fi = flat[keep]
+            ok = np.ones(fi.shape, dtype=bool)
+            for name in names:
+                ok &= np.isfinite(data[name][keep])
+            if not ok.any():
+                continue
+            count += np.bincount(fi[ok], minlength=n + 1)
+            for name in names:
+                sums[name] += np.bincount(fi[ok], weights=data[name][keep][ok], minlength=n + 1)
+
+        out = pd.DataFrame({name: sums[name][1:] / np.where(count[1:] > 0, count[1:], np.nan)
+                            for name in names})
+        out["n_pixels"] = count[1:]
+        out["method"] = np.where(count[1:] > 0, "area", "point")
+
+        gap = out["n_pixels"].to_numpy() == 0
+        if gap.any():
+            pts = parcels.loc[gap, "geometry"].representative_point()
+            ri, ci = rasterio.transform.rowcol(src.transform, pts.x.to_numpy(), pts.y.to_numpy())
+            ri = np.clip(np.asarray(ri), 0, src.height - 1)
+            ci = np.clip(np.asarray(ci), 0, src.width - 1)
+            idx = np.where(gap)[0]
+            good = np.ones(idx.shape, dtype=bool)
+            vals = {}
+            for i, name in enumerate(names):
+                v = src.read(i + 1)[ri, ci]
+                vals[name] = v
+                good &= np.isfinite(v)
+            for name in names:
+                out.loc[idx[good], name] = vals[name][good]
+    return out
