@@ -49,3 +49,7 @@ Thumbs.db
 
 # 필지 타일은 용량이 커서 제외한다. notebooks/build_parcel_tiles.py 로 재생성
 web/data/parcels/
+
+# 쪽수 점검용 임시 산출물
+web/_pagecheck.html
+web/_fig1.png
