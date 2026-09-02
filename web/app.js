@@ -94,6 +94,17 @@ async function boot() {
   });
   map.addLayer({ id: "sat", type: "raster", source: "sat", paint: { "raster-opacity": 1 } });
 
+  // 발표장에서 외부 타일이 막히면 배경만 검게 남고 이유가 화면에 남지 않는다.
+  // 실패를 한 번 감지하면 단색으로 넘기고 그 사실을 적는다. 판독 결과 자체는
+  // 사전 생성 파일에서 오므로 배경이 없어도 그대로 읽을 수 있다.
+  let satFailed = false;
+  map.on("error", (e) => {
+    if (satFailed || !e.error || !String(e.error.url || e.error.message || "").includes("arcgisonline")) return;
+    satFailed = true;
+    setBasemap("plain");
+    el("overlay-state").textContent = "위성영상 배경을 불러오지 못해 단색 배경으로 전환했습니다";
+  });
+
   if (emd) {
     map.addSource("emd", { type: "geojson", data: emd });
     map.addLayer({
@@ -538,12 +549,12 @@ el("tabs").addEventListener("click", (e) => {
 
 el("search").addEventListener("input", (e) => renderRegions(e.target.value));
 
-// 배경지도 전환 — 위성 타일이 안 뜰 때 단색으로 넘어가 데모를 이어간다
-el("basemap-switch").addEventListener("click", (e) => {
-  const btn = e.target.closest("button[data-base]");
-  if (!btn) return;
-  const sat = btn.dataset.base === "sat";
-  document.querySelectorAll("#basemap-switch button").forEach((b) => b.classList.toggle("on", b === btn));
+// 배경지도 전환 — 위성 타일이 안 뜰 때 단색으로 넘어가 데모를 이어간다.
+// 타일 실패를 감지했을 때도 같은 경로로 넘어가야 하므로 함수로 둔다.
+function setBasemap(kind) {
+  const sat = kind === "sat";
+  document.querySelectorAll("#basemap-switch button").forEach(
+    (b) => b.classList.toggle("on", b.dataset.base === kind));
   if (map.getLayer("sat")) map.setLayoutProperty("sat", "visibility", sat ? "visible" : "none");
   if (map.getLayer("sgg-fill")) map.setLayoutProperty("sgg-fill", "visibility", sat ? "none" : "visible");
   // 위성 위에서는 시군 경계선을 밝게, 단색 배경에서는 원래대로
@@ -551,6 +562,11 @@ el("basemap-switch").addEventListener("click", (e) => {
     map.setPaintProperty("sgg-line", "line-color", sat ? "#ffffff" : "#6b8bb5");
     map.setPaintProperty("sgg-line", "line-width", sat ? 1.2 : 0.8);
   }
+}
+
+el("basemap-switch").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-base]");
+  if (btn) setBasemap(btn.dataset.base);
 });
 
 document.querySelector(".compare").addEventListener("click", (e) => {

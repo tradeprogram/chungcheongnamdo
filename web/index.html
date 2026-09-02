@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>물길잡이 — 농경지 침수 및 호우 위성관측 체계</title>
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
 <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
@@ -142,7 +142,9 @@
   </aside>
 </main>
 
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="app.js?v=20260902235232"></script>
+<!-- 지도 라이브러리는 저장소에 함께 둔다. 발표장에서 CDN 이 막히면
+     지도가 통째로 뜨지 않는데, 그 실패는 되돌릴 방법이 없다. -->
+<script src="vendor/maplibre-gl.js"></script>
+<script src="app.js?v=20260903001132"></script>
 </body>
 </html>
