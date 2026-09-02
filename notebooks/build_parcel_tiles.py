@@ -131,7 +131,17 @@ def main() -> None:
         out["area_m2"] = out["area_m2"].round(0)
         path = PARCEL_DIR / f"{emd_cd}.json"
         path.write_text(out.to_json(drop_id=True), encoding="utf-8")
-        index.append({"emd_cd": emd_cd, "n": len(out), "kb": round(path.stat().st_size / 1024)})
+        # 화면은 지도 중심이 어느 읍면동에 드는지를 이 bbox 로 판정한다.
+        # bbox 를 빼면 필지가 영영 로드되지 않으므로 반드시 함께 쓴다.
+        b = group.total_bounds
+        index.append({
+            "emd_cd": emd_cd,
+            "emd_nm": group["emd_nm"].iloc[0],
+            "sgg_nm": group["sgg_nm"].iloc[0],
+            "bbox": [round(float(v), 5) for v in b],
+            "n": len(out),
+            "kb": round(path.stat().st_size / 1024),
+        })
 
     (WEB_DATA / "parcel_index.json").write_text(
         json.dumps(index, ensure_ascii=False), encoding="utf-8")

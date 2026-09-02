@@ -52,13 +52,16 @@ const STATUS = {
 };
 
 async function boot() {
+  // 자료 파일은 갱신 주기가 짧다. 브라우저 캐시에 걸리면 옛 인덱스를 읽어
+  // 필지가 로드되지 않는 식으로 조용히 깨지므로 캐시를 쓰지 않는다.
+  const get = (name) => fetch(DATA + name, { cache: "no-cache" }).then((r) => r.json());
   const [s, ev, st, sgg, emd, idx] = await Promise.all([
-    fetch(DATA + "storms.json").then((r) => r.json()),
-    fetch(DATA + "events.json").then((r) => r.json()),
-    fetch(DATA + "stats.json").then((r) => r.json()),
-    fetch(DATA + "sgg.geojson").then((r) => r.json()),
-    fetch(DATA + "emd.geojson").then((r) => r.json()).catch(() => null),
-    fetch(DATA + "parcel_index.json").then((r) => r.json()).catch(() => []),
+    get("storms.json"),
+    get("events.json"),
+    get("stats.json"),
+    get("sgg.geojson"),
+    get("emd.geojson").catch(() => null),
+    get("parcel_index.json").catch(() => []),
   ]);
   storms = s.sort((a, b) => (a.peak_date < b.peak_date ? 1 : -1));
   events = ev;
@@ -221,7 +224,7 @@ async function maybeLoadParcels() {
 
   el("zoom-hint").textContent = `${hit.sgg_nm} ${hit.emd_nm} 필지 자료 불러오는 중`;
   try {
-    const fc = await fetch(`${DATA}parcels/${hit.emd_cd}.json`).then((r) => r.json());
+    const fc = await fetch(`${DATA}parcels/${hit.emd_cd}.json`, { cache: "no-cache" }).then((r) => r.json());
     map.getSource("parcels").setData(fc);
     loadedEmd = hit.emd_cd;
     el("zoom-hint").textContent = `${hit.sgg_nm} ${hit.emd_nm} · 필지 ${fc.features.length.toLocaleString()}개`;
