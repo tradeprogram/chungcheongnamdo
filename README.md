@@ -1,96 +1,107 @@
-# 물길잡이 (RE:FIELD)
+# 물길잡이
 
 **농경지 침수 및 호우 위성관측 체계**
 
-> 시스템 범위는 `docs/50_scope_revision.md` 에서 재정의되었다.
-> 아래 원안 중 예측 관련 서술은 검증 실패로 폐기된 상태다.
-2026 충청남도 데이터 분석 아이디어 공모전 출품작
-
-> RE:FIELD는 Sentinel-1/2 위성, 팜맵, 기상·지형 데이터를 이용해 충남 농경지의 침수를 호우 전에 예측하고,
-> 호우 직후 실제 피해를 확인하며, 한정된 현장 인력과 복구자원을 어디에 먼저 투입할지 설명하는 농업재해 의사결정 AI입니다.
-
-**예측 → 확인 → 행동**
+2026 충청남도 데이터 분석 아이디어 공모전 출품작 · 마감 2026-09-23 18:00
 
 ---
 
-## 왜 이 문제인가
+## 무엇을 하는가
 
-2025년 7월 집중호우로 충남 15개 시·군에서 벼 14,944ha·논콩 1,381ha가 침수됐고, 도는 전문가 19명을
-5개 시·군 생산단지에 파견해 생육 회복·재파종·병해충 대응을 현장에서 판단해야 했다.
-충남농업기술원은 반복피해 지역 150곳을 집중관리 대상으로 선정했고, 2026년 배수개선 국비는 처음 1,000억 원을 넘었다.
+호우가 지나가면 행정은 "농경지가 얼마나 잠겼는가"를 20일 안에 보고해야 한다.
+위성이 대안으로 거론되지만 **위성은 언제나 볼 수 있는 것이 아니다.**
+충남 전역을 덮는 Sentinel-1 궤도는 2개뿐이고 12일에 한 번 지나며, 지나가도 촬영되지 않는다.
 
-행정이 실제로 답해야 하는 질문은 "어디가 위험한가"가 아니라 다음이다.
-
-> **48시간 뒤 어디가 잠길 가능성이 높고, 실제로 어디가 잠겼으며,
-> 한정된 농업재해 대응 인력과 장비를 어디부터 투입해야 하는가?**
-
-## 파이프라인
+그래서 이 시스템은 판독보다 **판독 가능 여부의 판정**을 앞에 세운다.
 
 ```
-호우 예보
+호우 사건 추출  (일강수 30mm 또는 3일 누적 50mm 이상)
    ↓
-필지별 침수 가능성 사전예측        (LightGBM + calibration)
+관측 가능성 판정  A: peak+48h 이내 / B: 48~120h / C: 120h 초과·미관측
    ↓
-Sentinel-1 SAR로 실제 침수 확인    (pre/post backscatter change)
+등급 A·B 사건만 침수 판독  (Sentinel-1 이중반사·개방수면 z-score)
    ↓
-팜맵 단위 농작물 영향 추정          (parcel zonal aggregation)
+팜맵 필지 단위 집계  (필지 1,434,057개, 판독률 99.1%)
    ↓
-Sentinel-2/SAR 시계열 회복 추적     (same-season anomaly)
-   ↓
-현장점검·배수·방제·재파종 우선순위화 (constrained ranking)
-   ↓
-시나리오 비교 (인력/펌프/시각)      (coverage, travel-hour)
-   ↓
-AI Agent가 근거·불확실성·행동안 설명 (tool-grounded only)
+등급 C 는 지도를 만들지 않고 "현장조사로 전환하라"고 알린다
 ```
 
-## 아키텍처
+2017년 이후 충남 호우 **77건 중 제때 확인할 수 있었던 사건은 17건(22%)** 이다.
+나머지 78%에 대해 위성 결과를 기다리는 것은 대응 지연이 된다.
 
-```
-공개데이터  Sentinel-1/2 · 팜맵 · KMA · DEM · WAMIS
-    │
-    ├─ Remote Sensing Engine ── 사건 전 baseline / SAR 실침수 / S2 회복 anomaly
-    ├─ Weather · Terrain Engine ── 강우 · slope · HAND · TWI
-    │
-    └─→ Parcel Feature Store (GeoParquet)
-            │
-            ├─ Pre-event Flood Model   LightGBM + calibration
-            ├─ Observed Impact Engine  필지별 침수율 · 생육영향
-            ├─ Decision Engine         우선순위 · 시나리오 · 자원제약
-            └─ Explainability          SHAP · Evidence · Uncertainty
-                    │
-                    ├─→ Tool-Calling AI Agent ─→ 자동 행정브리핑 / PDF
-                    └─→ WebGIS Dashboard ──────→ 현장확인 Feedback Labels
-```
+## 실측한 것
 
-## 설계 원칙
+같은 호우(2025-07-17 peak)를 두 번 관측했다. 부여읍 농경지 필지 10,270개 기준:
 
-1. **LLM은 판단하지 않는다.** 분석엔진이 숫자를 만들고 Agent는 그 결과를 읽어 설명만 한다.
-2. **모르는 것은 주장하지 않는다.** 공식 피해액 label이 없으므로 피해액을 예측하지 않는다.
-   `Observed Flood Exposure` · `Crop Impact Index` · `Recovery Delay Probability`만 산출한다.
-3. **위성이 후보를 좁히고 현장이 확정한다.** AI는 점검 우선순위와 근거를 제시하고 최종 결정은 담당자가 한다.
-4. **모든 숫자에 출처를 붙인다.** OBSERVED / FORECAST / MODEL / ASSUMPTION을 화면에서 구분한다.
-5. **가짜 인과추론을 하지 않는다.** "피해가 N% 줄어든다" 대신 "6시간 내 대응 가능한 고위험 필지 coverage"를 계산한다.
+| 관측 | peak 기준 | 등급 | 침수 후보 필지 |
+|---|---|---|---|
+| 07-19 06:31 | +40시간 | A | **2,426개 (23.6%)** |
+| 07-24 18:31 | +172시간 | C | 121개 (1.2%) |
+
+같은 호우, 같은 농경지인데 **관측 시각 5일 차이로 20배**가 갈린다.
+
+## 하지 않는 것
+
+**호우 전 필지별 침수를 예측하지 않는다.** 모델을 만들었고 검증에서 떨어졌다
+(사건 홀드아웃 ROC-AUC 0.50~0.55, 무작위 수준). 근거 없는 예측을 화면에 올리지
+않는 것이 이 시스템의 설계 원칙이다 — 폐기 경위는
+[docs/50_scope_revision.md](docs/50_scope_revision.md).
+
+같은 이유로 **판독값이 없는 필지에 근거가 있는 척하지 않는다.**
+면적 집계 89.4% / 대표점 표본 9.7% / 판독 불가 0.9% 를 화면에서 구분해 표시한다.
 
 ## 저장소 구조
 
 ```
-docs/     전략·데이터·검증 문서, 제출물
-src/rs/   Sentinel-1 침수탐지, Sentinel-2 회복탐지
-src/features/   팜맵 필지 feature 생성
-src/models/     baseline · LightGBM 사전예측
-src/decision/   우선순위 엔진 · 시나리오 엔진
-src/api/        FastAPI (status/data/warnings/provenance 응답계약)
-src/agent/      Tool-calling Agent
-web/            Next.js + MapLibre WebGIS
-notebooks/      검증·성능표 재현
+docs/         전략·데이터·검증 문서, 제출물 (90_submission/)
+src/rs/       GEE 헬퍼, Sentinel-1 침수 판독, 카탈로그, 관측 가능성 판정
+src/features/ 팜맵 필지, zonal 집계, 지형·강우 covariate, 취약도
+src/models/   폐기한 사전예측 모델 (기록으로 남김)
+notebooks/    아카이브·라벨·타일·화면 자료 생성, 실험, 검산
+web/          MapLibre 정적 뷰어 (백엔드 없음, 사전 생성 파일만 읽음)
+scripts/      야간 재생성 체인
 ```
 
-## 현재 상태
+`src/decision`, `src/api`, `src/agent` 는 폐기한 원안의 잔재다.
+현재 파이프라인은 이들을 쓰지 않는다.
 
-**D-22** (마감 2026-09-23 18:00). 준비 개요와 우선순위는 [docs/00_PREP_OVERVIEW.md](docs/00_PREP_OVERVIEW.md) 참조.
+## 재현
 
-## 데이터 출처
+```bash
+python notebooks/build_archive.py            # 관측 427회 · 호우 77건 아카이브
+python notebooks/build_event_labels_v2.py    # 필지별 침수 판독 (사건 6건)
+python notebooks/build_susceptibility_v2.py  # 다년 침수 빈도 (GEE 분할 수출)
+python notebooks/build_web_data.py           # 화면용 사건·통계·오버레이
+python notebooks/build_parcel_tiles.py       # 읍면동별 필지 GeoJSON
+python notebooks/make_figure.py              # 기획서 [그림 1]
+python notebooks/verify_proposal_numbers.py  # 기획서 수치 검산 (36건)
+python notebooks/check_page_count.py         # 3페이지 제한 실측
+```
 
-Sentinel-1/2 (Copernicus), 팜맵 (농림축산식품부), 기상자료개방포털 (기상청), DEM, WAMIS (국가수자원관리종합정보시스템).
-상세는 [docs/20_data_sources.md](docs/20_data_sources.md).
+GEE 프로젝트 ID는 `EE_PROJECT` 환경변수로 지정한다.
+팜맵 API 키는 `.env` 에 두며 `.env.example` 을 참고한다.
+
+화면은 정적 파일만 쓴다.
+
+```bash
+python -m http.server 5173 --directory web
+```
+
+## 데이터
+
+전량 공개데이터다. Sentinel-1 SAR (Copernicus / Google Earth Engine),
+팜맵 농경지 전자지도 (농림축산식품부 공공데이터포털), 행정동 경계 (통계청 SGIS),
+Copernicus DEM · MERIT Hydro, ERA5 강우 (Open-Meteo).
+상세는 [docs/20_data_sources.md](docs/20_data_sources.md),
+수치 출처 검증은 [docs/83_source_verification.md](docs/83_source_verification.md).
+
+## 문서
+
+| 문서 | 내용 |
+|---|---|
+| [70_official_criteria.md](docs/70_official_criteria.md) | 공모전 심사기준·양식 제약·쪽수 실측 |
+| [80_proposal_draft.md](docs/80_proposal_draft.md) | 기획서 본문 |
+| [50_scope_revision.md](docs/50_scope_revision.md) | 예측 모델 폐기와 범위 재정의 |
+| [40_experiments.md](docs/40_experiments.md) | 실험 기록 |
+| [84_coverage_fix.md](docs/84_coverage_fix.md) | 필지 판독 커버리지 38.7% → 99.1% |
+| [60_demo_script.md](docs/60_demo_script.md) | 3분 데모 동선 |
