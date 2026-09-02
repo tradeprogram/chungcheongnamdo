@@ -5,8 +5,15 @@
 한글 기본 여백(상하 20mm, 좌우 20mm)의 A4 에 휴먼명조 10pt 로 앉힌 HTML 을 만들고
 브라우저에서 높이를 재는 쪽을 택했다.
 
-    A4 = 210 x 297mm, 96dpi 기준 794 x 1123px
-    한글 기본 여백을 빼면 본문 폭 170mm(643px), 높이 257mm(971px)
+양식 원본(참가신청 서류.hwpx)의 header.xml/section0.xml 에서 직접 읽은 값이다.
+
+    용지        59528 x 84186 HWPUNIT = 210 x 297mm (A4)
+    여백        좌우 5669(20mm), 상하 4251/4252(15mm), 머리말·꼬리말 1417(5mm)
+    본문 영역   170 x 257mm = 96dpi 기준 643 x 971px
+    줄간격      160% (양식에 지배적으로 정의된 값)
+
+**줄간격 150% 로 재면 3페이지 안에 들어오는 것처럼 보인다.** 양식이 쓰는 값은 160%이고
+그 차이만으로 0.14페이지가 움직이므로, 여기서는 160% 를 기준으로 둔다.
 
 실행
     python notebooks/check_page_count.py
@@ -32,7 +39,7 @@ SUBMIT = ["아이디어 요약서", "① 아이디어 명칭", "② 분석 목�
 CSS = """
 body { margin:0; background:#555; font-family:'HY중고딕','휴먼명조','바탕',Batang,serif; }
 .page-body { width:643px; margin:0 auto; background:#fff; padding:0;
-             font-size:10pt; line-height:1.5; color:#000; }
+             font-size:10pt; line-height:1.6; color:#000; }
 h2 { font-size:11pt; margin:10px 0 5px; font-weight:bold; }
 p { margin:0 0 5px; text-align:justify; }
 table { border-collapse:collapse; width:100%; margin:5px 0; font-size:9pt; }
@@ -67,7 +74,7 @@ def md_to_html(md: str) -> str:
             in_table = False
         if not stripped:
             continue
-        if "figure1" in stripped:
+        if stripped.startswith("[그림 1]") or "figure1" in stripped:
             # file:// 은 http 문서에서 차단된다. 이미지가 안 실리면 그림 높이만큼
             # 쪽수가 낙관적으로 나오므로 같은 서버에 복사해 두고 상대경로로 건다.
             out.append('<img src="_fig1.png">')
@@ -97,6 +104,12 @@ def main() -> None:
         blocks.append("\n".join(cur))
 
     body = md_to_html("\n".join(blocks))
+    # 그림 하나가 0.26페이지다. 앵커 문구가 바뀌어 삽입에 실패하면 측정이 통째로
+    # 낙관적으로 나오는데, 숫자만 봐서는 그 실패가 드러나지 않는다.
+    # 실제로 본문에서 파일 경로 줄을 지웠을 때 세 번 연속 그림 없이 쟀다.
+    if "<img" not in body:
+        raise SystemExit("그림이 삽입되지 않았다 — 본문에서 [그림 1] 줄을 찾지 못했다.")
+
     shutil.copy(FIG, OUT.parent / "_fig1.png")
     OUT.write_text(
         f"<meta charset='utf-8'><style>{CSS}</style>"

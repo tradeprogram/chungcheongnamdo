@@ -131,7 +131,7 @@ def main() -> None:
     # 기획서는 3페이지를 넘길 수 없고, 그림 하나가 0.38페이지를 먹는다.
     # 정사각 범위를 가로로 눕히면 같은 필지 수를 보여주면서 높이가 줄어든다.
     # 지도 두 장을 나란히 두는 구성이므로 가로 확장이 판독에 손해가 아니다.
-    half_x, half_y = 1900, 1150  # m
+    half_x, half_y = 1900, 1060  # m
     sub_m = sub.cx[cx - half_x : cx + half_x, cy - half_y : cy + half_y]
     print(f"  표시 범위 내 필지 {len(sub_m):,}개")
 
@@ -140,7 +140,7 @@ def main() -> None:
     print("배경 타일 수집")
     img, img_bounds = fetch_basemap(bounds, args.zoom)
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5), dpi=200)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.1), dpi=200)
     extent = [img_bounds[0], img_bounds[2], img_bounds[1], img_bounds[3]]
 
     for ax, (event_id, title, sub_title) in zip(axes, EVENTS):
@@ -169,17 +169,15 @@ def main() -> None:
     # 실제로 회색이 나오는 필지가 있으면 그때 범례에 되살린다.
     if any(not np.isfinite(v) for e in EVENTS for v in sub_m[e[0]]):
         handles.append(Patch(facecolor="#9ca3af", alpha=0.62, edgecolor="white", label="판독 불가"))
+    # 그림 높이를 줄이면 아래쪽 요소의 절대 간격도 같이 줄어 서로 겹친다.
+    # 범례를 위, 설명을 아래로 두고 각각의 y 를 명시한다.
     fig.legend(handles=handles, loc="lower center", ncol=4, frameon=False, fontsize=10,
-               bbox_to_anchor=(0.5, 0.012))
-    fig.suptitle(
-        f"같은 호우(2025-07-17 peak), 같은 농경지 — 관측 시각에 따른 판별 결과 차이  ·  "
-        f"{sub_m['sgg_nm'].iloc[0]} {args.emd}",
-        fontsize=13, y=0.98)
-    fig.text(0.5, 0.075,
-             f"표시 필지 {len(sub_m):,}개 전량 판독  |  배경: Esri World Imagery"
-             "  |  필지: 농림축산식품부 팜맵  |  판독: Sentinel-1 SAR",
+               bbox_to_anchor=(0.5, 0.055))
+    # 큰 제목과 출처 줄은 넣지 않는다. 기획서 본문의 캡션과 ⑤ 필요 데이터가
+    # 같은 말을 하고 있고, 3페이지 제한에서는 중복 한 줄이 곧 잘려나갈 한 줄이다.
+    fig.text(0.5, 0.018, f"표시 필지 {len(sub_m):,}개 전량 판독",
              ha="center", fontsize=8.5, color="#475569")
-    fig.tight_layout(rect=[0, 0.115, 1, 0.94])
+    fig.tight_layout(rect=[0, 0.115, 1, 0.99])
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out, bbox_inches="tight", facecolor="white")
