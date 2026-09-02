@@ -147,12 +147,17 @@ async function boot() {
 // 필지 색 규칙. 선택한 사건의 침수율 속성(field)으로 칠한다.
 // field 가 없으면(그 사건의 판독 결과가 없으면) 농경지 구분만 보여준다.
 function parcelPaint(field) {
-  const value = field ? ["coalesce", ["get", field], -1] : -1;
+  const byClass = ["==", ["get", "class_nm"], "논"];
+  // 판독 지도가 없는 사건(77건 중 74건)에서는 농경지 구분만 보여준다.
+  // 전부 회색으로 칠하면 지도가 아무 정보도 주지 못한다.
+  if (!field) return ["case", byClass, "#f5d90a", "#4ade80"];
+
+  const value = ["coalesce", ["get", field], -1];
   return ["case",
-    ["==", value, -1], "#94a3b8",              // 판독 불가 또는 판독 결과 없음
+    ["==", value, -1], "#94a3b8",              // 그 사건에서 판독 불가 (표본 부족)
     [">=", value, 0.5], "#2563eb",             // 침수율 50% 이상
     [">=", value, 0.2], "#60a5fa",             // 20~50%
-    ["==", ["get", "class_nm"], "논"], "#f5d90a",
+    byClass, "#f5d90a",
     "#4ade80"];
 }
 
@@ -407,7 +412,7 @@ function setParcelBasis(eventId) {
     const ev = events.find((e) => e.id === eventId);
     basis.textContent = ` · ${ev ? ev.observed_kst.slice(0, 10) : eventId} 관측 기준`;
   } else {
-    basis.textContent = " · 선택 사건의 필지 판독 결과 없음";
+    basis.textContent = " · 선택 사건 판독 지도 없음 · 농경지 구분만 표시";
   }
 }
 
