@@ -417,18 +417,26 @@ async function setOverlay(id) {
 
 const stat = (label, value) => `<div class="stat"><span>${label}</span><b>${value}</b></div>`;
 
-function selectStorm(id) {
+// obs 를 주면 그 관측을 기준으로 상세를 그린다.
+// 같은 호우를 두 번 관측한 사건에서 지도만 바꾸고 패널을 두면, 화면이
+// "07-24 기준"이라고 하면서 07-19 의 수치를 보여주는 상태가 된다.
+function selectStorm(id, obs = null) {
   activeStorm = storms.find((s) => s.storm_id === id);
   document.querySelectorAll("li.event").forEach((li) => li.classList.toggle("active", li.dataset.id === id));
 
   const s = activeStorm;
-  const ev = overlayFor(s);
+  const ev = obs ? events.find((e) => e.id === obs.id) || overlayFor(s) : overlayFor(s);
   el("detail-title").textContent = `${s.peak_date} 호우`;
 
   let html = stat("사건 기간", `${s.start} ~ ${s.end}`);
   html += stat("최대 일강수량 (도 평균)", `${s.peak_mm} mm`);
   html += stat("사건 누적 강수량", `${s.total_mm} mm`);
-  if (s.observed) {
+  if (obs && ev) {
+    html += stat("관측 일시", ev.observed_kst);
+    html += stat("관측 지연", `${obs.lag} 시간 (${Math.round(obs.lag / 24)}일) · 등급 ${obs.grade}`);
+    html += stat("관측 궤도", `orbit ${ev.rel_orbit}`);
+    html += stat("해당 궤도 촬영 성공률", `${Math.round(ev.acquisition_reliability * 100)}%`);
+  } else if (s.observed) {
     html += stat("관측 일시", s.obs_kst);
     html += stat("관측 지연", `${s.lag_hours} 시간 (${Math.round(s.lag_hours / 24)}일)`);
     html += stat("관측 궤도", `orbit ${s.rel_orbit}`);
@@ -441,7 +449,14 @@ function selectStorm(id) {
     html += stat("논 침수 후보 필지 비율", `${ev.paddy_pct} %`);
     html += stat("밭 침수 후보 필지 비율", `${ev.upland_pct} %`);
   }
-  html += `<div class="reason">${s.reason}</div>`;
+  // 사유 문구는 호우의 대표 관측을 설명한다. 다른 관측을 보고 있을 때 그대로 두면
+  // "40시간 경과, 적합한 관측"이라는 문장이 172시간짜리 관측 옆에 붙는다.
+  const GRADE_REASON = {
+    A: "최대 강수 시점 후 48시간 이내 관측. 침수 범위 판정에 적합",
+    B: "최대 강수 시점 후 48~120시간 관측. 잔존 침수만 관측됨",
+    C: "최대 강수 시점 후 120시간 초과 관측. 침수 범위를 대표하지 않음",
+  };
+  html += `<div class="reason">${obs ? GRADE_REASON[obs.grade] ?? s.reason : s.reason}</div>`;
   if (!ev && s.observed) {
     html += `<p class="hint">해당 사건의 판독 지도는 생성되지 않았습니다.
       관측 이력과 등급은 전 사건에 대해 산출되어 있으며, 판독 지도는 선별 사건에 한해 처리되었습니다.</p>`;
@@ -571,7 +586,18 @@ el("basemap-switch").addEventListener("click", (e) => {
 
 document.querySelector(".compare").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-overlay]");
-  if (btn) { setOverlay(btn.dataset.overlay); setParcelBasis(btn.dataset.overlay); }
+  if (!btn) return;
+  const id = btn.dataset.overlay;
+  // 이 비교 위젯이 다루는 호우를 함께 갱신한다. 지도·범례·상세가 같은 관측을
+  // 가리켜야 발표 중 화면이 서로 모순되지 않는다.
+  // 호우를 관측일로 역추적하면 안 된다 — 늦은 관측(07-24)은 사건 기간
+  // (07-17~07-20) 밖이라 어떤 호우에도 걸리지 않는다. 위젯이 대상을 명시한다.
+  const stormId = e.currentTarget.dataset.storm;
+  if (stormId) {
+    selectStorm(stormId, { id, lag: Number(btn.dataset.lag), grade: btn.dataset.grade });
+  }
+  setOverlay(id);
+  setParcelBasis(id);
 });
 
 

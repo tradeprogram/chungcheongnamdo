@@ -131,13 +131,13 @@
     <h2 id="detail-title">사건을 선택하세요</h2>
     <div id="detail"></div>
 
-    <div class="compare">
+    <div class="compare" data-storm="S20250717">
       <h3>동일 사건에 대한 두 차례 관측</h3>
       <p class="hint">2025년 7월 호우(최대 강수 07-17)는 두 차례 관측되었습니다.
         관측 시점 차이가 판독 결과에 미치는 영향을 보여줍니다.</p>
       <div class="compare-row">
-        <button data-overlay="o134_2025-07-19">07-19 <small>+40h · A</small></button>
-        <button data-overlay="o127_2025-07-24">07-24 <small>+172h · C</small></button>
+        <button data-overlay="o134_2025-07-19" data-lag="39.5" data-grade="A">07-19 <small>+40h · A</small></button>
+        <button data-overlay="o127_2025-07-24" data-lag="172.0" data-grade="C">07-24 <small>+172h · C</small></button>
       </div>
       <div id="compare-bars"></div>
     </div>
@@ -147,6 +147,6 @@
 <!-- 지도 라이브러리는 저장소에 함께 둔다. 발표장에서 CDN 이 막히면
      지도가 통째로 뜨지 않는데, 그 실패는 되돌릴 방법이 없다. -->
 <script src="vendor/maplibre-gl.js"></script>
-<script src="app.js?v=20260903011450"></script>
+<script src="app.js?v=20260903021109"></script>
 </body>
 </html>
