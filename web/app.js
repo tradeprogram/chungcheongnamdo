@@ -38,8 +38,8 @@ requestAnimationFrame(() => map.resize());
 setTimeout(() => map.resize(), 200);
 
 const STATUS = {
-  observed_good: { text: "확인됨", cls: "A" },
-  observed_late: { text: "늦은 관측", cls: "B" },
+  observed_good: { text: "적기 관측", cls: "A" },
+  observed_late: { text: "지연 관측", cls: "B" },
   missed: { text: "미관측", cls: "C" },
   pending: { text: "관측 대기", cls: "P" },
 };
@@ -178,7 +178,7 @@ async function maybeLoadParcels() {
   if (map.getLayer("overlay-layer")) {
     map.setLayoutProperty("overlay-layer", "visibility", on ? "none" : "visible");
   }
-  if (!on) { el("zoom-hint").textContent = "확대하면 필지 단위로 볼 수 있습니다"; return; }
+  if (!on) { el("zoom-hint").textContent = "축척을 확대하면 필지 단위 결과가 표시됩니다"; return; }
 
   // 읍면동 레이어가 아니라 인덱스의 bbox 로 찾는다.
   // 레이어 렌더 여부에 의존하면 choropleth 를 끈 상태에서 필지가 안 뜬다.
@@ -186,27 +186,27 @@ async function maybeLoadParcels() {
   const hit = emdIndex.find(
     (e) => c.lng >= e.bbox[0] && c.lng <= e.bbox[2] && c.lat >= e.bbox[1] && c.lat <= e.bbox[3]
   );
-  if (!hit) { el("zoom-hint").textContent = "이 위치에는 농경지 필지가 없습니다"; return; }
+  if (!hit) { el("zoom-hint").textContent = "해당 위치에 농경지 필지가 없습니다"; return; }
   if (hit.emd_cd === loadedEmd) return;
 
-  el("zoom-hint").textContent = `${hit.sgg_nm} ${hit.emd_nm} 필지 불러오는 중…`;
+  el("zoom-hint").textContent = `${hit.sgg_nm} ${hit.emd_nm} 필지 자료 불러오는 중`;
   try {
     const fc = await fetch(`${DATA}parcels/${hit.emd_cd}.json`).then((r) => r.json());
     map.getSource("parcels").setData(fc);
     loadedEmd = hit.emd_cd;
     el("zoom-hint").textContent = `${hit.sgg_nm} ${hit.emd_nm} · 필지 ${fc.features.length.toLocaleString()}개`;
   } catch {
-    el("zoom-hint").textContent = "이 읍면동의 필지 파일이 없습니다";
+    el("zoom-hint").textContent = "해당 읍면동의 필지 자료가 없습니다";
   }
 }
 
 function renderStats() {
   el("stats").innerHTML = `
-    <div><b>${stats.n_passes}</b><span>관측 이력</span></div>
+    <div><b>${stats.n_passes}</b><span>누적 관측</span></div>
     <div><b>${stats.n_storms}</b><span>호우 사건</span></div>
-    <div class="hl"><b>${stats.pct_grade_a}%</b><span>제때 확인 가능</span></div>
-    <div><b>${stats.n_missed}</b><span>미관측</span></div>`;
-  el("archive-hint").textContent = `${stats.period} · 갱신 ${stats.generated_at}`;
+    <div class="hl"><b>${stats.pct_grade_a}%</b><span>적기 관측률</span></div>
+    <div><b>${stats.n_missed}</b><span>미관측 사건</span></div>`;
+  el("archive-hint").textContent = `분석 기간 ${stats.period} · 최종 갱신 ${stats.generated_at}`;
 }
 
 // 관측 대기 중인 사건 = 지금 이 순간 행정이 답을 기다리는 사건
@@ -216,11 +216,11 @@ function renderLive() {
   const s = pending[0];
   el("live").innerHTML = `
     <div class="live-tag">관측 대기</div>
-    <div class="live-title">${s.peak_date} 호우 · 도평균 ${s.peak_mm}mm</div>
+    <div class="live-title">${s.peak_date} 호우 · 최대 일강수량 ${s.peak_mm}mm</div>
     <div class="live-body">
-      3일 누적 ${s.total_mm}mm. 아직 충남 전체를 덮은 관측이 없습니다.<br>
-      다음 통과 <b>${s.next_pass_kst ?? "미정"}</b>
-      ${s.next_pass_lag_hours ? `(peak +${Math.round(s.next_pass_lag_hours / 24)}일)` : ""}
+      사건 누적 강수량 ${s.total_mm}mm. 현재까지 충청남도 전역을 포함하는 관측이 없습니다.<br>
+      다음 통과 예정 <b>${s.next_pass_kst ?? "미정"}</b>
+      ${s.next_pass_lag_hours ? `(최대 강수 시점 후 ${Math.round(s.next_pass_lag_hours / 24)}일)` : ""}
     </div>`;
 }
 
@@ -243,8 +243,8 @@ function renderStorms() {
           <span class="event-label">${s.peak_date}</span>
           ${hasMap}<span class="grade ${st.cls}">${st.text}</span>
         </div>
-        <div class="event-meta">peak ${s.peak_mm}mm · 누적 ${s.total_mm}mm${
-        s.lag_hours ? ` · 관측 +${Math.round(s.lag_hours / 24)}일` : ""}</div>
+        <div class="event-meta">최대 ${s.peak_mm}mm · 누적 ${s.total_mm}mm${
+        s.lag_hours ? ` · 관측 지연 ${Math.round(s.lag_hours / 24)}일` : ""}</div>
       </li>`;
     })
     .join("");
@@ -338,7 +338,7 @@ function zoomTo(geom) {
 async function setOverlay(id) {
   if (map.getLayer("overlay-layer")) map.removeLayer("overlay-layer");
   if (map.getSource("overlay")) map.removeSource("overlay");
-  if (!id) { el("overlay-state").textContent = "· 이 사건은 판독 지도가 없습니다"; return; }
+  if (!id) { el("overlay-state").textContent = "· 해당 사건은 판독 지도가 생성되지 않았습니다"; return; }
   el("overlay-state").textContent = "";
   const bounds = await fetch(`${DATA}overlays/${id}.json`).then((r) => r.json()).catch(() => null);
   if (!bounds) return;
@@ -357,25 +357,25 @@ function selectStorm(id) {
   el("detail-title").textContent = `${s.peak_date} 호우`;
 
   let html = stat("사건 기간", `${s.start} ~ ${s.end}`);
-  html += stat("peak 일강수 (도평균)", `${s.peak_mm} mm`);
-  html += stat("사건 누적", `${s.total_mm} mm`);
+  html += stat("최대 일강수량 (도 평균)", `${s.peak_mm} mm`);
+  html += stat("사건 누적 강수량", `${s.total_mm} mm`);
   if (s.observed) {
-    html += stat("관측 시각", s.obs_kst);
-    html += stat("지연", `+${s.lag_hours} 시간 (${Math.round(s.lag_hours / 24)}일)`);
-    html += stat("궤도", `orbit ${s.rel_orbit}`);
-    html += stat("이 궤도의 촬영률", `${Math.round(s.acquisition_reliability * 100)}%`);
+    html += stat("관측 일시", s.obs_kst);
+    html += stat("관측 지연", `${s.lag_hours} 시간 (${Math.round(s.lag_hours / 24)}일)`);
+    html += stat("관측 궤도", `orbit ${s.rel_orbit}`);
+    html += stat("해당 궤도 촬영 성공률", `${Math.round(s.acquisition_reliability * 100)}%`);
   } else if (s.status === "pending") {
-    html += stat("다음 통과", s.next_pass_kst ?? "미정");
-    if (s.next_pass_lag_hours) html += stat("그때의 지연", `+${Math.round(s.next_pass_lag_hours / 24)}일`);
+    html += stat("다음 통과 예정", s.next_pass_kst ?? "미정");
+    if (s.next_pass_lag_hours) html += stat("예상 관측 지연", `${Math.round(s.next_pass_lag_hours / 24)}일`);
   }
   if (ev) {
-    html += stat("논 침수 후보 필지", `${ev.paddy_pct} %`);
-    html += stat("밭 침수 후보 필지", `${ev.upland_pct} %`);
+    html += stat("논 침수 후보 필지 비율", `${ev.paddy_pct} %`);
+    html += stat("밭 침수 후보 필지 비율", `${ev.upland_pct} %`);
   }
   html += `<div class="reason">${s.reason}</div>`;
   if (!ev && s.observed) {
-    html += `<p class="hint">이 사건의 판독 지도는 아직 생성하지 않았습니다.
-      관측 이력과 등급은 전량 산출돼 있고, 지도는 선별 사건만 처리한 상태입니다.</p>`;
+    html += `<p class="hint">해당 사건의 판독 지도는 생성되지 않았습니다.
+      관측 이력과 등급은 전 사건에 대해 산출되어 있으며, 판독 지도는 선별 사건에 한해 처리되었습니다.</p>`;
   }
   el("detail").innerHTML = html;
   setOverlay(ev ? ev.id : null);
@@ -386,25 +386,25 @@ function showEmd(p) {
   el("detail").innerHTML =
     stat("농경지 면적", `${p.area_km2} km²`) +
     stat("필지 수", Number(p.parcels).toLocaleString()) +
-    stat("다년 침수빈도", pct(p.wet_freq)) +
+    stat("다년 침수 빈도", pct(p.wet_freq)) +
     stat("도내 순위", `${p.rank} / ${emdIndex.length || "-"}`) +
-    `<p class="hint">젖은 관측 15건에서 이 읍면동 농경지가 침수 후보로 판정된 평균 비율입니다.
-     확대하면 필지 하나하나를 볼 수 있습니다.</p>`;
+    `<p class="hint">강우 관측 15회에서 해당 읍면동 농경지가 침수 후보로 판정된 평균 비율입니다.
+     축척을 확대하면 개별 필지를 확인할 수 있습니다.</p>`;
 }
 
 function showParcel(p) {
   el("detail-title").textContent = `필지 ${p.farmmap_id}`;
-  let html = stat("소재", `${p.sgg_nm} ${p.emd_nm}`);
+  let html = stat("소재지", `${p.sgg_nm} ${p.emd_nm}`);
   html += stat("농경지 구분", p.class_nm);
   html += stat("면적", `${Number(p.area_m2).toLocaleString()} m²`);
-  html += stat("다년 침수빈도", pct(p.wet_freq));
+  html += stat("다년 침수 빈도", pct(p.wet_freq));
   html += stat("관측 횟수", `${p.wet_n_obs ?? "-"} 회`);
   html += `<div class="sep">사건별 침수율</div>`;
-  html += stat("2025-07-19 (peak +40h)", pct(p.e2025));
-  html += stat("2025-07-24 (peak +172h)", pct(p.e2025late));
-  html += stat("2023-07-23 (peak +7h)", pct(p.e2023));
-  html += `<p class="hint">침수율은 필지 안에서 이중반사(z&gt;2)로 판정된 픽셀의 비율입니다.
-    20m 격자라 작은 필지는 표본이 적습니다.</p>`;
+  html += stat("2025-07-19 (지연 40시간)", pct(p.e2025));
+  html += stat("2025-07-24 (지연 172시간)", pct(p.e2025late));
+  html += stat("2023-07-23 (지연 7시간)", pct(p.e2023));
+  html += `<p class="hint">침수율은 필지 내에서 이중반사 지표(z&gt;2)로 판정된 픽셀의 비율입니다.
+    판독 단위가 20m 격자이므로 면적이 작은 필지는 표본이 부족할 수 있습니다.</p>`;
   el("detail").innerHTML = html;
 }
 
@@ -418,8 +418,8 @@ function renderCompare() {
       <div class="bar"><div style="width:${(e.paddy_pct / max) * 100}%"></div></div>
     </div>`;
   el("compare-bars").innerHTML =
-    bar(a, "07-19 관측 (+40h)") + bar(b, "07-24 관측 (+172h)") +
-    `<p class="hint">같은 호우인데 논 침수 후보 비율이 ${(a.paddy_pct / b.paddy_pct).toFixed(0)}배 차이납니다.</p>`;
+    bar(a, "07-19 관측 (지연 40시간)") + bar(b, "07-24 관측 (지연 172시간)") +
+    `<p class="hint">동일 사건임에도 논 침수 후보 비율이 약 ${(a.paddy_pct / b.paddy_pct).toFixed(0)}배 차이를 보입니다.</p>`;
 }
 
 el("filters").addEventListener("click", (e) => {
@@ -467,5 +467,31 @@ document.querySelector(".compare").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-overlay]");
   if (btn) setOverlay(btn.dataset.overlay);
 });
+
+
+// --- 이용 안내 -------------------------------------------------------
+// 지도 조작을 처음 접하는 이용자를 위해 최초 방문 시 자동으로 표시한다.
+// 표시 여부는 브라우저에만 저장되며 서버로 전송되지 않는다.
+const HELP_KEY = "cn-obs-help-seen";
+
+function setHelp(open) {
+  el("help-overlay").hidden = !open;
+  if (open) {
+    try { localStorage.setItem(HELP_KEY, "1"); } catch (e) { /* 저장 불가 환경 무시 */ }
+  }
+}
+
+el("help-btn").addEventListener("click", () => setHelp(true));
+el("help-close").addEventListener("click", () => setHelp(false));
+el("help-overlay").addEventListener("click", (e) => {
+  if (e.target === el("help-overlay")) setHelp(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") setHelp(false);
+});
+
+let seen = false;
+try { seen = localStorage.getItem(HELP_KEY) === "1"; } catch (e) { seen = false; }
+if (!seen) setHelp(true);
 
 boot();

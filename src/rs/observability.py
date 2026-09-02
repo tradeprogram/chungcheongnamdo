@@ -134,13 +134,13 @@ def grade_observation(lag_hours: float, rel_orbit: int | None = None,
     등급 경계는 실험 04 실측에서 왔다 (peak+1.6일 논 25.20% vs peak+7일 1.19%).
     """
     if lag_hours < 0:
-        return {"grade": "C", "reason": "사건 이전 관측 — 침수 판정 대상 아님"}
+        return {"grade": "C", "reason": "최대 강수 시점 이전 관측으로 침수 판정 대상에 해당하지 않음"}
     if lag_hours <= 48:
-        grade, reason = "A", f"peak +{lag_hours:.0f}시간 — 침수 범위 판정 신뢰 가능"
+        grade, reason = "A", f"최대 강수 시점 후 {lag_hours:.0f}시간 경과. 침수 범위 판정에 적합한 관측"
     elif lag_hours <= 120:
-        grade, reason = "B", f"peak +{lag_hours:.0f}시간 — 잔존 침수만 관측. 논은 배수됐을 수 있음"
+        grade, reason = "B", f"최대 강수 시점 후 {lag_hours:.0f}시간 경과. 잔존 침수만 관측되며 논은 배수가 진행되었을 수 있음"
     else:
-        grade, reason = "C", f"peak +{lag_hours:.0f}시간 — 사건을 놓친 관측. 현장조사 필요"
+        grade, reason = "C", f"최대 강수 시점 후 {lag_hours:.0f}시간 경과. 침수 판정에 부적합하며 현장 조사가 필요함"
 
     out = {"grade": grade, "reason": reason}
     if rel_orbit is not None:
@@ -168,7 +168,7 @@ def observation_window(peak: dt.datetime, days: int = 7, history: pd.DataFrame |
     if not passes:
         return {"passes": [], "best": None, "lag_hours": None, "grade": "C",
                 "reliability": 0.0,
-                "reason": f"peak 이후 {days}일 안에 충남 전체커버 통과 없음"}
+                "reason": f"최대 강수 시점 이후 {days}일 이내 충청남도 전역 관측 통과 없음"}
 
     reliability = acquisition_reliability(history)
     best = passes[0]
@@ -176,16 +176,16 @@ def observation_window(peak: dt.datetime, days: int = 7, history: pd.DataFrame |
     prob = reliability.get(best.rel_orbit, 0.0)
 
     if lag <= 48:
-        grade, reason = "A", "peak 48시간 이내 관측 — 침수 범위 판정 신뢰 가능"
+        grade, reason = "A", "최대 강수 시점 후 48시간 이내 관측으로 침수 범위 판정에 적합"
     elif lag <= 120:
-        grade, reason = "B", "peak 48~120시간 — 잔존 침수만 관측. 논은 배수됐을 수 있음"
+        grade, reason = "B", "최대 강수 시점 후 48~120시간. 잔존 침수만 관측되며 논은 배수가 진행되었을 수 있음"
     else:
-        grade, reason = "C", "peak 120시간 초과 — 위성 확인 부적합. 현장조사 필요"
+        grade, reason = "C", "최대 강수 시점 후 120시간 초과. 위성 확인에 부적합하며 현장 조사가 필요함"
 
     # 통과 예정이어도 촬영되지 않을 수 있다. 촬영률이 낮은 궤도는 등급을 낮춘다.
     if grade == "A" and prob < 0.4:
         grade = "B"
-        reason = f"시각은 좋으나 이 궤도(orbit {best.rel_orbit})의 여름 촬영률이 {prob*100:.0f}% 로 낮음"
+        reason = f"관측 시점은 적합하나 해당 궤도(orbit {best.rel_orbit})의 하계 촬영 성공률이 {prob*100:.0f}%로 낮음"
 
     return {"passes": passes, "best": best, "lag_hours": round(lag, 1),
             "grade": grade, "reliability": round(prob, 2), "reason": reason}

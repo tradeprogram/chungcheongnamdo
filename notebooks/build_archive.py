@@ -129,8 +129,8 @@ def match_observations(storms: pd.DataFrame, passes: pd.DataFrame, reliability: 
                         "next_pass_kst": nxt.when.strftime("%Y-%m-%d %H:%M") if nxt else None,
                         "next_pass_orbit": nxt.rel_orbit if nxt else None,
                         "next_pass_lag_hours": round((nxt.when - peak).total_seconds() / 3600, 1) if nxt else None,
-                        "reason": ("아직 관측 전 — 다음 통과 대기" if pending
-                                   else "peak 이후 10일 안에 충남 전체커버 관측 없음 — 현장조사 외 확인수단 없음")})
+                        "reason": ("관측 전 상태로 다음 통과를 대기 중임" if pending
+                                   else "최대 강수 시점 이후 10일 이내 전역 관측이 없어 현장 조사 외 확인 수단이 없음")})
         else:
             best = later.iloc[0]
             lag = (best["when"] - peak).total_seconds() / 3600
