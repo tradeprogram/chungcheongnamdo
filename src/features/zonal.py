@@ -274,6 +274,10 @@ def parcel_stats_v2(
             out.loc[idx[good], "sum_zvh"] = ph[good]
             out.loc[idx[good], "n_double"] = ((pv[good] > z_threshold) & (ph[good] > z_threshold)).astype(float)
             out.loc[idx[good], "n_open"] = ((pv[good] < -z_threshold) & (ph[good] < -z_threshold)).astype(float)
+            # 대표점마저 유효하지 않은 필지가 남는다. 그 필지에 method="point" 를
+            # 그대로 두면 값이 없는데도 화면이 "대표점 표본"이라는 근거를 주장하게 된다.
+            # 근거가 없으면 없다고 적는다.
+            out.loc[idx[~good], "method"] = "none"
 
     denom = out["n_valid"].replace(0, np.nan)
     out["mean_zvv"] = out["sum_zvv"] / denom
@@ -352,4 +356,6 @@ def parcel_means_v2(
                 good &= np.isfinite(v)
             for name in names:
                 out.loc[idx[good], name] = vals[name][good]
+            # 대표점도 유효하지 않으면 근거가 없다. parcel_stats_v2 와 같은 규칙을 쓴다.
+            out.loc[idx[~good], "method"] = "none"
     return out

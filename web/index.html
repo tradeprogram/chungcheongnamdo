@@ -66,6 +66,7 @@
       <div class="legend-row"><span class="sw sw-line" style="border-color:#ffffff"></span>면적 집계</div>
       <div class="legend-row"><span class="sw sw-line" style="border-color:#f59e0b"></span>대표점 표본 (화소 1개)</div>
       <div class="legend-row"><span class="sw sw-line" style="border-color:#ef4444"></span>급경사 · 신뢰도 낮음</div>
+      <div class="legend-row"><span class="sw" style="background:#94a3b8"></span>판독 불가 (0.9%)</div>
       <div class="legend-sec">도 전역 (축척 축소 시)</div>
       <div class="legend-row"><span class="sw" style="background:rgba(37,99,235,.85)"></span>침수 후보 화소</div>
       <div class="legend-note" id="overlay-state"></div>
@@ -113,8 +114,9 @@
               사건의 침수 규모를 대표하지 않습니다.</li>
           <li>판독 단위는 20m 격자입니다. 필지 안의 화소를 모아 비율을 산출하는 것이
               원칙이며(농경지 필지의 89.4%), 격자에 화소가 배정되지 않은 소규모 필지는
-              폴리곤 내부의 대표점 한 곳을 표본으로 사용합니다(10.6%).
-              두 경우는 근거의 등급이 다르므로 <b>필지 테두리 색</b>으로 구분해 표시합니다.</li>
+              폴리곤 내부의 대표점 한 곳을 표본으로 사용합니다(9.7%).
+              두 경우는 근거의 등급이 다르므로 <b>필지 테두리 색</b>으로 구분해 표시하며,
+              어느 방식으로도 값을 얻지 못한 0.9%는 판독 불가로 표시합니다.</li>
           <li>경사 20°를 초과하는 필지(2.5%)는 SAR 기하 왜곡으로 신뢰도가 낮아
               적색 테두리로 표시합니다.</li>
         </ul>
@@ -145,6 +147,6 @@
 <!-- 지도 라이브러리는 저장소에 함께 둔다. 발표장에서 CDN 이 막히면
      지도가 통째로 뜨지 않는데, 그 실패는 되돌릴 방법이 없다. -->
 <script src="vendor/maplibre-gl.js"></script>
-<script src="app.js?v=20260903001132"></script>
+<script src="app.js?v=20260903011450"></script>
 </body>
 </html>

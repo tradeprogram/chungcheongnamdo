@@ -81,6 +81,9 @@ def main() -> None:
         parcels["mth"] = parcels["mth"].map({"area": 0, "point": 1}).fillna(2).astype("int8")
         parcels["stp"] = parcels["stp"].fillna(False).astype("int8")
         parcels["npx"] = parcels["npx"].fillna(0).round(0).astype("int32")
+        # n_valid 가 0 이면 어떤 method 가 적혀 있든 판독값이 없다. method 만 보고
+        # 매핑하면 값 없는 필지가 화면에서 "대표점 표본"이라는 근거를 주장하게 된다.
+        parcels.loc[parcels["npx"] <= 0, "mth"] = 2
         n = len(parcels)
         print(f"  판독 근거 — 면적집계 {(parcels['mth']==0).sum()/n*100:.1f}% / "
               f"점표본 {(parcels['mth']==1).sum()/n*100:.1f}% / "
