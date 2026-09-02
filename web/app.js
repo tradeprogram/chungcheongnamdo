@@ -60,6 +60,15 @@ async function boot() {
 
   await mapReady;
 
+  // 위성 배경. 농지 마스크를 실제 지형 위에 얹으면 "이게 진짜 농지구나"가 바로 전달된다.
+  // 외부 타일이라 네트워크가 필요하다. 끊기면 '단색'으로 전환해 데모를 이어간다.
+  map.addSource("sat", {
+    type: "raster", tileSize: 256,
+    tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+    attribution: "Esri, Maxar, Earthstar Geographics",
+  });
+  map.addLayer({ id: "sat", type: "raster", source: "sat", paint: { "raster-opacity": 1 } });
+
   if (emd) {
     map.addSource("emd", { type: "geojson", data: emd });
     map.addLayer({
@@ -79,26 +88,31 @@ async function boot() {
   }
 
   map.addSource("sgg", { type: "geojson", data: sgg });
-  map.addLayer({ id: "sgg-fill", type: "fill", source: "sgg", paint: { "fill-color": "#1b2a3c", "fill-opacity": 0.55 } });
+  map.addLayer({
+    id: "sgg-fill", type: "fill", source: "sgg",
+    paint: { "fill-color": "#1b2a3c", "fill-opacity": 0.55 },
+    layout: { visibility: "none" },  // 기본은 위성 배경
+  });
   map.addLayer({ id: "sgg-line", type: "line", source: "sgg", paint: { "line-color": "#6b8bb5", "line-width": 0.8 } });
   addLabels(sgg);
 
   // 필지 레이어 — 데이터는 확대 시 채워 넣는다
   map.addSource("parcels", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  // 위성 영상 위에 얹는 마스크이므로 반투명으로 둔다. 영상이 비쳐야 농지임이 확인된다.
   map.addLayer({
     id: "parcel-fill", type: "fill", source: "parcels",
     paint: {
       "fill-color": ["case",
         [">=", ["coalesce", ["get", "e2025"], -1], 0.5], "#2563eb",
-        [">=", ["coalesce", ["get", "e2025"], -1], 0.2], "#3b82f6",
-        ["==", ["get", "class_nm"], "논"], "#2f4a63",
-        "#3a4a3a"],
-      "fill-opacity": 0.75,
+        [">=", ["coalesce", ["get", "e2025"], -1], 0.2], "#60a5fa",
+        ["==", ["get", "class_nm"], "논"], "#f5d90a",
+        "#4ade80"],
+      "fill-opacity": 0.55,
     },
   });
   map.addLayer({
     id: "parcel-line", type: "line", source: "parcels",
-    paint: { "line-color": "#0b1218", "line-width": 0.3 },
+    paint: { "line-color": "#ffffff", "line-width": 0.6, "line-opacity": 0.55 },
   });
   // 레이어 지정 핸들러(map.on("click","parcel-fill",...)) 대신
   // 지도 전체 클릭에서 직접 조회한다. 레이어가 아직 없거나 순서가 바뀌어도 동작한다.
@@ -120,10 +134,14 @@ async function boot() {
   renderLive();
   renderStorms();
   renderCompare();
-  renderEmdRanking(emd);
+  emdData = emd;
+  renderRegions();
 
   const first = storms.find((x) => overlayFor(x)) || storms[0];
   selectStorm(first.storm_id);
+  // 초기 상태를 한 번 맞춘다. moveend 에만 의존하면 boot 이 끝나기 전에 지도를 옮긴 경우
+  // (예: 링크로 특정 지역 진입) 필지가 영영 로드되지 않는다.
+  maybeLoadParcels();
 }
 
 // 시군명은 symbol 레이어 대신 HTML 마커로 그린다.
@@ -155,6 +173,11 @@ async function maybeLoadParcels() {
   const on = z >= PARCEL_ZOOM;
   map.setLayoutProperty("parcel-fill", "visibility", on ? "visible" : "none");
   map.setLayoutProperty("parcel-line", "visibility", on ? "visible" : "none");
+  // 필지 축척에서는 래스터 오버레이를 끈다. 20m 격자를 확대하면 뭉개져 필지를 가리고,
+  // 이미 필지 색이 같은 사건의 침수율을 담고 있다.
+  if (map.getLayer("overlay-layer")) {
+    map.setLayoutProperty("overlay-layer", "visibility", on ? "none" : "visible");
+  }
   if (!on) { el("zoom-hint").textContent = "확대하면 필지 단위로 볼 수 있습니다"; return; }
 
   // 읍면동 레이어가 아니라 인덱스의 bbox 로 찾는다.
@@ -230,21 +253,69 @@ function renderStorms() {
   );
 }
 
-function renderEmdRanking(emd) {
-  if (!emd) { el("emd-list").innerHTML = "<li>읍면동 데이터 없음</li>"; return; }
-  const rows = emd.features
-    .map((f) => f.properties)
-    .sort((a, b) => b.wet_freq - a.wet_freq);
-  el("emd-list").innerHTML = rows
-    .map((p, i) => `<li class="emd-row" data-cd="${p.emd_cd}">
-        <span class="rank">${i + 1}</span>
-        <span class="emd-name">${p.sgg_nm} ${p.emd_nm}</span>
-        <span class="emd-val">${pct(p.wet_freq)}</span>
-      </li>`)
+// 지역 목록 — 시군으로 묶고 그 안에 읍면동을 넣는다.
+// 도 전체 249개를 한 줄로 늘어놓으면 담당자가 자기 지역을 찾을 수 없다.
+let emdData = null;
+const openSgg = new Set();
+
+function renderRegions(query = "") {
+  const box = el("region-list");
+  if (!emdData) { box.innerHTML = "<p class='hint'>읍면동 데이터 없음</p>"; return; }
+
+  const q = query.trim();
+  const rows = emdData.features.map((f) => ({ p: f.properties, g: f.geometry }));
+  const matched = q
+    ? rows.filter((r) => (r.p.sgg_nm + " " + r.p.emd_nm).includes(q))
+    : rows;
+
+  const bySgg = new Map();
+  for (const r of matched) {
+    if (!bySgg.has(r.p.sgg_nm)) bySgg.set(r.p.sgg_nm, []);
+    bySgg.get(r.p.sgg_nm).push(r);
+  }
+  if (!bySgg.size) { box.innerHTML = "<p class='hint'>검색 결과가 없습니다.</p>"; return; }
+
+  // 시군은 소속 읍면동의 면적가중 평균 침수빈도로 정렬한다
+  const groups = [...bySgg.entries()]
+    .map(([sgg, list]) => {
+      const area = list.reduce((s, r) => s + r.p.area_km2, 0);
+      const freq = list.reduce((s, r) => s + r.p.wet_freq * r.p.area_km2, 0) / (area || 1);
+      return { sgg, list: list.sort((a, b) => b.p.wet_freq - a.p.wet_freq), area, freq };
+    })
+    .sort((a, b) => b.freq - a.freq);
+
+  box.innerHTML = groups
+    .map((g) => {
+      const open = q || openSgg.has(g.sgg);
+      const items = g.list
+        .map((r) => `<li class="emd-row" data-cd="${r.p.emd_cd}">
+            <span class="rank">${r.p.rank}</span>
+            <span class="emd-name">${r.p.emd_nm}</span>
+            <span class="emd-val">${pct(r.p.wet_freq)}</span>
+          </li>`)
+        .join("");
+      return `<div class="sgg-group">
+        <button class="sgg-head${open ? " open" : ""}" data-sgg="${g.sgg}">
+          <span class="caret">${open ? "▾" : "▸"}</span>
+          <span class="sgg-title">${g.sgg}</span>
+          <span class="sgg-meta">${g.list.length}개 · ${g.area.toFixed(0)}km²</span>
+          <span class="emd-val">${pct(g.freq)}</span>
+        </button>
+        <ul class="ranking" ${open ? "" : 'style="display:none"'}>${items}</ul>
+      </div>`;
+    })
     .join("");
-  document.querySelectorAll(".emd-row").forEach((li) =>
+
+  box.querySelectorAll(".sgg-head").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const name = btn.dataset.sgg;
+      openSgg.has(name) ? openSgg.delete(name) : openSgg.add(name);
+      renderRegions(el("search").value);
+    })
+  );
+  box.querySelectorAll(".emd-row").forEach((li) =>
     li.addEventListener("click", () => {
-      const f = emd.features.find((x) => x.properties.emd_cd === li.dataset.cd);
+      const f = emdData.features.find((x) => x.properties.emd_cd === li.dataset.cd);
       if (!f) return;
       showEmd(f.properties);
       zoomTo(f.geometry);
@@ -372,6 +443,23 @@ el("tabs").addEventListener("click", (e) => {
   });
   if (map.getLayer("overlay-layer")) {
     map.setLayoutProperty("overlay-layer", "visibility", showEmdLayer ? "none" : "visible");
+  }
+});
+
+el("search").addEventListener("input", (e) => renderRegions(e.target.value));
+
+// 배경지도 전환 — 위성 타일이 안 뜰 때 단색으로 넘어가 데모를 이어간다
+el("basemap-switch").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-base]");
+  if (!btn) return;
+  const sat = btn.dataset.base === "sat";
+  document.querySelectorAll("#basemap-switch button").forEach((b) => b.classList.toggle("on", b === btn));
+  if (map.getLayer("sat")) map.setLayoutProperty("sat", "visibility", sat ? "visible" : "none");
+  if (map.getLayer("sgg-fill")) map.setLayoutProperty("sgg-fill", "visibility", sat ? "none" : "visible");
+  // 위성 위에서는 시군 경계선을 밝게, 단색 배경에서는 원래대로
+  if (map.getLayer("sgg-line")) {
+    map.setPaintProperty("sgg-line", "line-color", sat ? "#ffffff" : "#6b8bb5");
+    map.setPaintProperty("sgg-line", "line-width", sat ? 1.2 : 0.8);
   }
 });
 
