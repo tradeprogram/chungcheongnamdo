@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>물길잡이 — 충청남도 농경지 침수 및 호우 위성관측 체계</title>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="style.css?v=20260903130829">
+<link rel="stylesheet" href="style.css?v=20260903141641">
 </head>
 <body>
 <div class="fx-grid" aria-hidden="true"></div>
@@ -82,6 +82,18 @@
           <button id="help-close" aria-label="닫기">닫기</button>
         </div>
 
+        <div class="help-lead">
+          <p><b>호우가 지나가면 행정은 20일 안에 농경지 침수 피해를 보고해야 합니다.</b>
+             위성이 대안으로 거론되지만 위성은 언제나 볼 수 있는 것이 아닙니다.
+             충남 전역을 덮는 Sentinel-1 궤도는 2개뿐이고 12일에 한 번 지나며, 지나가도 촬영되지 않습니다.</p>
+          <p>그래서 이 시스템은 판독보다 <b>판독 가능 여부의 판정</b>을 앞에 세웁니다.
+             2017년 이후 충남 호우 77건 중 제때(최대 강수 후 48시간 이내) 확인할 수 있었던 사건은
+             <b>17건, 22%</b>였습니다. 나머지는 관측이 늦었거나 촬영되지 않았습니다.</p>
+          <p>관측 시각이 결과를 가릅니다. 2025년 7월 같은 호우에서
+             <b>07-19 관측(지연 40시간, 등급 A)은 논 침수 후보 25.67%</b>,
+             <b>07-24 관측(지연 172시간, 등급 C)은 1.42%</b>였습니다. 5일 차이로 18배입니다.</p>
+        </div>
+
         <h3>1. 화면 구성</h3>
         <ul>
           <li><b>좌측</b> — 2017년 이후 호우 사건 목록 및 지역별 침수 빈도</li>
@@ -123,6 +135,16 @@
               적색 테두리로 표시합니다.</li>
         </ul>
 
+        <h3>5. 이 시스템이 하지 않는 것</h3>
+        <ul>
+          <li><b>호우 전 침수 예측을 제공하지 않습니다.</b> 예측 모델을 구축했으나 사건 내부
+              판별력이 무작위 수준(ROC-AUC 0.50~0.55)이어서 폐기했습니다.
+              근거가 확보되지 않은 결과를 화면에 제시하지 않는 것이 설계 원칙입니다.</li>
+          <li>피해액을 산정하지 않습니다. 공식 피해액 자료와 대조된 바 없기 때문입니다.</li>
+          <li>현장조사를 접수하지 않습니다. 본 시스템은 조사 대상을 좁히는 도구이며,
+              조사 접수와 피해 등록은 기존 행정 절차에서 수행됩니다.</li>
+        </ul>
+
         <p class="help-foot">배경 위성영상 Esri World Imagery · 필지 농림축산식품부 팜맵 ·
           판독 Sentinel-1 SAR · 강수 ERA5 재분석</p>
       </div>
@@ -149,8 +171,8 @@
 <!-- 지도 라이브러리는 저장소에 함께 둔다. 발표장에서 CDN 이 막히면
      지도가 통째로 뜨지 않는데, 그 실패는 되돌릴 방법이 없다. -->
 <script src="vendor/maplibre-gl.js"></script>
-<script src="app.js?v=20260903134532"></script>
+<script src="app.js?v=20260903141641"></script>
 <!-- agent.js 는 app.js 의 map·storms·selectStorm 을 쓴다. 반드시 뒤에 온다. -->
-<script src="agent.js?v=20260903134532"></script>
+<script src="agent.js?v=20260903141641"></script>
 </body>
 </html>

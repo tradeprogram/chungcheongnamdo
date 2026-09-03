@@ -436,6 +436,23 @@ function clearOverlay() {
   if (map.getSource("overlay")) map.removeSource("overlay");
 }
 
+// 도 전역 축척에서 침수 후보 화소는 위성영상의 지형에 묻혀 거의 보이지 않는다.
+// 발표자가 배경을 바꿔 주던 동작인데, 설명자 없이 혼자 보는 사람에게는
+// "판독 지도를 켰는데 아무것도 없다"로 읽힌다. 화면이 스스로 알려주고 바꿔 준다.
+function showOverlayHint() {
+  const box = el("overlay-state");
+  box.textContent = "";
+  const satOn = !map.getLayer("sat") || map.getLayoutProperty("sat", "visibility") !== "none";
+  if (!satOn || map.getZoom() >= PARCEL_ZOOM) return;
+  box.textContent = "· 위성영상 위에서는 침수 화소가 잘 보이지 않습니다 ";
+  const btn = document.createElement("button");
+  btn.className = "inline-act";
+  btn.type = "button";
+  btn.textContent = "단색 배경으로 보기";
+  btn.addEventListener("click", () => { setBasemap("plain"); box.textContent = ""; });
+  box.appendChild(btn);
+}
+
 // MapLibre 는 스타일 로딩이 끝나기 전 addSource/addLayer 에 예외를 던진다.
 // isStyleLoaded() 를 기다리는 방식은 배경 타일이 느린 환경에서 콜백이 쌓여
 // 순서를 보장하지 못했다(늦게 깨어난 옛 요청이 새 선택을 덮어썼다).
@@ -447,7 +464,7 @@ async function setOverlay(id) {
     try { clearOverlay(); } catch {}
     return;
   }
-  el("overlay-state").textContent = "";
+  showOverlayHint();
   const bounds = await fetch(`${DATA}overlays/${id}.json`).then((r) => r.json()).catch(() => null);
   if (!bounds || overlayWanted !== id) return;
 
@@ -650,7 +667,10 @@ function setBasemap(kind) {
 
 el("basemap-switch").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-base]");
-  if (btn) setBasemap(btn.dataset.base);
+  if (!btn) return;
+  setBasemap(btn.dataset.base);
+  // 안내가 가리키던 상황이 끝났으면 안내도 사라져야 한다
+  if (overlayWanted) showOverlayHint();
 });
 
 document.querySelector(".compare").addEventListener("click", (e) => {
