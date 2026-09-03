@@ -468,31 +468,7 @@ def call_gemini(payload: dict, agent: dict) -> dict:
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY 환경변수가 없습니다.")
     model = os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)
-    prompt = {
-        "instruction": SYSTEM_PROMPT,
-        "user_question": str(payload.get("message", ""))[:3000],
-        "agent_context": agent["context"],
-        "tool_trace": agent["tool_trace"],
-        # 화면 이동은 여기 있는 것만 말할 수 있다. 목록을 주지 않으면 모델이
-        # '현장조사 등록 화면' 같은 없는 화면을 만들어 안내한다.
-        "available_actions": [a["label"] for a in agent["actions"]],
-        "recent_history": (payload.get("history") or [])[-8:],
-        "output_format": "한국어 순수 텍스트만 쓴다(영어 단어 섞지 않는다). 3~4개 문단, 400~700자. "
-                         "마크다운 기호 금지. '판정:', '근거 수치:' 같은 고정 머리말 없이 "
-                         "설명이 흐르듯 이어지게 쓴다. 근거로 쓴 수치는 문장 안에 그대로 적는다.",
-    }
-    body = {
-        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
-        "generationConfig": {
-            "temperature": 0.4,
-            # 사고 토큰이 출력 한도를 함께 먹는다. 2048 로는 finishReason=MAX_TOKENS 가 나며
-            # 답이 문장 중간에서 잘렸고, 사고 과정이 그대로 답변에 섞여 나오기도 했다.
-            "maxOutputTokens": 4096,
-            # thinkingBudget=0 은 이 모델에서 400 으로 거부된다. 최소한으로 줄인다.
-            "thinkingConfig": {"thinkingBudget": 128},
-        },
-    }
+    body = _gemini_body(payload, agent)
     req = Request(
         f"{GEMINI_BASE}/models/{model}:generateContent",
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
@@ -508,6 +484,35 @@ def call_gemini(payload: dict, agent: dict) -> dict:
     return {"answer": extract_text(data), "model": model}
 
 
+def _gemini_body(payload: dict, agent: dict) -> dict:
+    prompt = {
+        "instruction": SYSTEM_PROMPT,
+        "user_question": str(payload.get("message", ""))[:3000],
+        "agent_context": agent["context"],
+        "tool_trace": agent["tool_trace"],
+        # 화면 이동은 여기 있는 것만 말할 수 있다. 목록을 주지 않으면 모델이
+        # '현장조사 등록 화면' 같은 없는 화면을 만들어 안내한다.
+        "available_actions": [a["label"] for a in agent["actions"]],
+        "recent_history": (payload.get("history") or [])[-8:],
+        "output_format": "한국어 순수 텍스트만 쓴다(영어 단어 섞지 않는다). 3~4개 문단, 400~700자. "
+                         "마크다운 기호 금지. '판정:', '근거 수치:' 같은 고정 머리말 없이 "
+                         "설명이 흐르듯 이어지게 쓴다. 근거로 쓴 수치는 문장 안에 그대로 적는다.",
+    }
+    return {
+        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
+        "generationConfig": {
+            "temperature": 0.4,
+            # 사고 토큰이 출력 한도를 함께 먹는다. 2048 로는 finishReason=MAX_TOKENS 가 나며
+            # 답이 문장 중간에서 잘렸고, 사고 과정이 그대로 답변에 섞여 나오기도 했다.
+            "maxOutputTokens": 4096,
+            # thinkingBudget=0 은 이 모델에서 400 으로 거부된다. 최소한으로 줄인다.
+            "thinkingConfig": {"thinkingBudget": 128},
+        },
+    }
+    return body
+
+
 def extract_text(data: dict) -> str:
     """응답 본문만 꺼낸다.
 
@@ -520,6 +525,91 @@ def extract_text(data: dict) -> str:
         if text:
             return text
     return ""
+
+
+# --- 스트리밍 ---------------------------------------------------------------
+
+
+def stream_gemini(payload: dict, agent: dict):
+    """Gemini 응답을 조각으로 흘려보낸다.
+
+    한 번에 받아서 보여주면 20~30초 동안 화면이 비어 있다. 같은 시간이 걸려도
+    첫 글자가 몇 초 만에 나오면 기다림의 성격이 달라진다.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY 환경변수가 없습니다.")
+    model = os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)
+    req = Request(
+        f"{GEMINI_BASE}/models/{model}:streamGenerateContent?alt=sse",
+        data=json.dumps(_gemini_body(payload, agent), ensure_ascii=False).encode("utf-8"),
+        headers={"content-type": "application/json", "x-goog-api-key": api_key},
+        method="POST",
+    )
+    with urlopen(req, timeout=90) as res:
+        for raw in res:
+            line = raw.decode("utf-8").strip()
+            if not line.startswith("data:"):
+                continue
+            body = line[5:].strip()
+            if body == "[DONE]":
+                break
+            try:
+                chunk = json.loads(body)
+            except json.JSONDecodeError:
+                continue
+            for cand in chunk.get("candidates") or []:
+                for part in (cand.get("content") or {}).get("parts") or []:
+                    # 사고 파트는 흘려보내지 않는다. 그대로 내보내면 모델의
+                    # 혼잣말이 타이핑되어 나간다.
+                    if part.get("thought"):
+                        continue
+                    text = part.get("text")
+                    if text:
+                        yield text
+
+
+def handle_chat_stream(payload: dict, emit) -> None:
+    """근거를 먼저 보내고 답변을 조각으로 이어 보낸다.
+
+    emit(event, data) 는 서버가 SSE 로 내보내는 함수다.
+    """
+    load_env_files()
+    agent = run_agent(payload)
+    emit("meta", {
+        "actions": agent["actions"],
+        "evidence": agent["evidence"],
+        "tool_trace": agent["tool_trace"],
+        "suggested": agent["suggested"],
+    })
+
+    has_key = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+    if has_key:
+        sent = False
+        try:
+            for piece in stream_gemini(payload, agent):
+                sent = True
+                emit("text", {"t": piece})
+            if sent:
+                emit("done", {"llm": "ok",
+                              "model": os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)})
+                return
+        except Exception as exc:  # noqa: BLE001
+            # 도중에 끊겼으면 조각난 답을 남기지 않는다. 지우고 다시 쓴다.
+            emit("reset", {"reason": type(exc).__name__})
+            _emit_typed(emit, local_answer(agent))
+            emit("done", {"llm": "error", "detail": str(exc)[:300]})
+            return
+
+    _emit_typed(emit, local_answer(agent))
+    emit("done", {"llm": "no_key" if not has_key else "error"})
+
+
+def _emit_typed(emit, text: str, size: int = 24) -> None:
+    """LLM 이 없을 때도 같은 방식으로 흘려보낸다. 화면이 두 가지로 동작하지 않게."""
+    for i in range(0, len(text), size):
+        emit("text", {"t": text[i : i + size]})
+        time.sleep(0.02)
 
 
 # --- LLM 없이 답하기 -------------------------------------------------------

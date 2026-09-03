@@ -23,26 +23,62 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.agent.core import handle_chat, load_env_files  # noqa: E402
+from src.agent.core import handle_chat, handle_chat_stream, load_env_files  # noqa: E402
 
 WEB = ROOT / "web"
 
 
 class Handler(SimpleHTTPRequestHandler):
+    # 기본값은 응답을 모아 보낸다. 그러면 스트리밍이 스트리밍이 아니게 된다.
+    wbufsize = 0
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB), **kwargs)
 
     def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler 규약
-        if self.path.rstrip("/") != "/ai/chat":
+        path = self.path.rstrip("/")
+        if path not in ("/ai/chat", "/ai/chat/stream"):
             self.send_error(404)
             return
         try:
             length = int(self.headers.get("content-length", "0"))
             payload = json.loads(self.rfile.read(length) or b"{}")
+        except Exception as exc:  # noqa: BLE001
+            self._json({"error": type(exc).__name__, "detail": str(exc)[:400]})
+            return
+
+        if path == "/ai/chat/stream":
+            self._stream(payload)
+            return
+        try:
             body = handle_chat(payload)
         except Exception as exc:  # noqa: BLE001 — 채팅 오류가 화면을 멈추게 두지 않는다
             body = {"error": type(exc).__name__, "detail": str(exc)[:400]}
         self._json(body)
+
+    def _stream(self, payload: dict) -> None:
+        """SSE. 근거를 먼저 보내고 답변을 조각으로 이어 보낸다."""
+        self.send_response(200)
+        self.send_header("content-type", "text/event-stream; charset=utf-8")
+        self.send_header("cache-control", "no-cache")
+        self.send_header("x-accel-buffering", "no")
+        self.end_headers()
+
+        def emit(event: str, data: dict) -> None:
+            payload = json.dumps(data, ensure_ascii=False)
+            chunk = "event: " + event + "\ndata: " + payload + "\n\n"
+            self.wfile.write(chunk.encode("utf-8"))
+            self.wfile.flush()
+
+        try:
+            handle_chat_stream(payload, emit)
+        except (BrokenPipeError, ConnectionAbortedError):
+            pass  # 사용자가 닫았다
+        except Exception as exc:  # noqa: BLE001
+            try:
+                emit("done", {"llm": "error", "detail": str(exc)[:300]})
+            except Exception:  # noqa: BLE001
+                pass
 
     def _json(self, obj: dict) -> None:
         data = json.dumps(obj, ensure_ascii=False).encode("utf-8")

@@ -7,6 +7,13 @@
 // 여기서도 최소한의 안내를 낸다 — 발표 중 외부 호출 실패를 화면에 전가하지 않는다.
 
 const AGENT_ENDPOINT = "/ai/chat";
+const AGENT_STREAM = "/ai/chat/stream";
+// SSE 는 이벤트를 빈 줄로 끊는다 (LF 두 개).
+const SSE_SEP = String.fromCharCode(10, 10);
+// 빈 줄로 문단을 나눈다.
+const PARA_SPLIT = /\n{2,}/;
+
+let agentTimer = null;
 const AGENT_OPENERS = [
   "이번 호우는 위성으로 확인할 수 있어?",
   "관측 시각이 결과를 얼마나 가르는지 보여줘",
@@ -127,8 +134,12 @@ async function submitAgent() {
 async function askAgent(text) {
   addAgentMessage("user", text);
   setAgentBusy(true);
+  // 답변이 완성되기를 기다렸다가 한 번에 붙이면 20~30초 동안 화면이 비어 있다.
+  // 서버가 조각으로 보내는 대로 이어 붙여, 첫 문장이 몇 초 만에 읽히게 한다.
+  const view = beginAssistantMessage();
+  let got = false;
   try {
-    const res = await fetch(AGENT_ENDPOINT, {
+    const res = await fetch(AGENT_STREAM, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -137,25 +148,43 @@ async function askAgent(text) {
         history: agentHistory.slice(-8),
       }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data.answer) throw new Error(data.detail || data.error || "빈 응답");
-    addAgentMessage("assistant", data.answer, {
-      actions: data.actions,
-      evidence: data.evidence,
-      trace: data.tool_trace,
-      suggested: data.suggested,
-    });
-    // 키가 없는 상태를 오류로 적지 않는다. 그건 고장이 아니라 구성이다.
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let done = null;
+    for (;;) {
+      const { value, done: finished } = await reader.read();
+      if (finished) break;
+      buffer += decoder.decode(value, { stream: true });
+      // SSE 는 빈 줄로 이벤트를 끊는다. 마지막 조각은 아직 안 끝났을 수 있다.
+      const blocks = buffer.split(SSE_SEP);
+      buffer = blocks.pop();
+      for (const block of blocks) {
+        const ev = /^event:\s*(.+)$/m.exec(block);
+        const dt = /^data:\s*([\s\S]+)$/m.exec(block);
+        if (!ev || !dt) continue;
+        let data;
+        try { data = JSON.parse(dt[1]); } catch { continue; }
+        if (ev[1] === "meta") view.setMeta(data);
+        else if (ev[1] === "text") { got = true; view.append(data.t); }
+        else if (ev[1] === "reset") { got = false; view.reset(); }
+        else if (ev[1] === "done") done = data;
+      }
+    }
+    if (!got) throw new Error("빈 응답");
+    view.finish();
     agentStatus.textContent =
-      data.llm === "ok" && data.model ? data.model
-      : data.llm === "no_key" ? "화면 자료 기반 (LLM 키 없음)"
-      : data.llm === "error" ? `LLM 실패 · 화면 자료로 답변`
-      : "화면 자료로 답변";
+      done && done.llm === "ok" && done.model ? done.model
+      : done && done.llm === "no_key" ? "화면 자료 기반 (LLM 키 없음)"
+      : done && done.llm === "error" ? "LLM 실패 · 화면 자료로 답변"
+      : "답변 완료";
   } catch (err) {
-    addAgentMessage("assistant",
-      "에이전트 서버에 닿지 못했습니다. `python scripts/serve_agent.py` 로 실행하면 " +
-      "채팅이 붙습니다. 지도와 판독 결과는 서버 없이도 그대로 동작합니다.");
+    view.reset();
+    view.append("에이전트 서버에 닿지 못했습니다. python scripts/serve_agent.py 로 실행하면 "
+      + "채팅이 붙습니다. 지도와 판독 결과는 서버 없이도 그대로 동작합니다.");
+    view.finish();
     agentStatus.textContent = `연결 실패 · ${String(err.message).slice(0, 40)}`;
   } finally {
     clearInterval(agentTimer);
@@ -163,11 +192,38 @@ async function askAgent(text) {
   }
 }
 
-let agentTimer = null;
+// 비어 있는 답변 말풍선을 먼저 만들고, 도착하는 대로 채운다.
+function beginAssistantMessage() {
+  const wrap = agentEl("div", { class: "agent-msg agent-assistant agent-typing" });
+  const body = agentEl("div", { class: "agent-text" });
+  const extra = agentEl("div");
+  wrap.appendChild(body);
+  wrap.appendChild(extra);
+  agentBody.appendChild(wrap);
+  let text = "";
+  let meta = {};
+  const render = () => {
+    body.innerHTML = "";
+    for (const para of text.split(PARA_SPLIT)) {
+      if (para.trim()) body.appendChild(agentEl("p", { text: para.trim() }));
+    }
+    // 새 글자가 보이도록 따라 내려간다. 사용자가 위로 올렸으면 방해하지 않는다.
+    const near = agentBody.scrollHeight - agentBody.scrollTop - agentBody.clientHeight < 80;
+    if (near) agentBody.scrollTop = agentBody.scrollHeight;
+  };
+  return {
+    append(t) { text += t; render(); },
+    reset() { text = ""; render(); },
+    setMeta(m) { meta = m; },
+    finish() {
+      wrap.classList.remove("agent-typing");
+      agentHistory.push({ role: "assistant", text });
+      renderMessageExtras(extra, meta);
+      agentBody.scrollTop = agentBody.scrollHeight;
+    },
+  };
+}
 
-// 응답이 20~30초 걸린다. 그동안 한 문구만 떠 있으면 멈춘 것처럼 보이므로
-// 무엇을 기다리는지와 경과 시간을 같이 보여준다. 근거 수집은 순식간이고
-// 오래 걸리는 쪽은 LLM이라, 그렇게 적어야 사실과 맞다.
 function setAgentBusy(busy) {
   agentSend.disabled = busy;
   agentInput.disabled = busy;
@@ -188,6 +244,12 @@ function addAgentMessage(role, text, meta = {}) {
     if (para.trim()) wrap.appendChild(agentEl("p", { text: para.trim() }));
   }
 
+  renderMessageExtras(wrap, meta);
+  agentBody.appendChild(wrap);
+  agentBody.scrollTop = agentBody.scrollHeight;
+}
+
+function renderMessageExtras(wrap, meta = {}) {
   const evidence = meta.evidence || [];
   if (evidence.length) {
     const box = agentEl("div", { class: "agent-evidence" },
@@ -235,9 +297,6 @@ function addAgentMessage(role, text, meta = {}) {
     }
     wrap.appendChild(row);
   }
-
-  agentBody.appendChild(wrap);
-  agentBody.scrollTop = agentBody.scrollHeight;
 }
 
 initAgent();

@@ -521,3 +521,10 @@ ul.ranking li:hover { background: var(--glass-2); border-radius: 7px; }
 }
 .hint.caution b { color: #fcd34d; }
 .stats div { cursor: help; }
+
+
+/* 타이핑 중임을 알리는 커서 */
+.agent-typing .agent-text p:last-child::after {
+  content: "▍"; margin-left: 1px; color: #38bdf8; animation: agent-blink 1s steps(1) infinite;
+}
+@keyframes agent-blink { 50% { opacity: 0; } }
