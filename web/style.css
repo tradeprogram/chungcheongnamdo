@@ -64,12 +64,14 @@ header {
   border-bottom: 1px solid var(--glass-line);
   box-shadow: 0 1px 0 var(--edge) inset, 0 10px 30px rgba(0, 0, 0, .35);
 }
-.head-left { min-width: 0; display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap; }
-header h1 {
-  margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em;
-  background: linear-gradient(100deg, #eaf6ff 0%, #38bdf8 55%, #a78bfa 100%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-  filter: drop-shadow(0 0 14px rgba(56, 189, 248, .35));
+.head-left { min-width: 0; display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+/* 제목 자리는 로고가 대신한다. 폭·높이 속성을 두어 이미지가 늦게 와도
+   레이아웃이 밀리지 않게 하고, 높이만 지정해 원본 비율(5.07:1)을 지킨다. */
+header h1.brand { margin: 0; display: flex; align-items: center; line-height: 0; }
+header h1.brand img {
+  height: 34px; width: auto; display: block;
+  /* 어두운 헤더 위에서 마크가 떠 보이도록 얇은 발광만 준다. 색은 건드리지 않는다. */
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, .3));
 }
 header .sub {
   margin: 0; color: var(--muted); font-size: 13px;
