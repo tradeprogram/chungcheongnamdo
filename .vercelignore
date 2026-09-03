@@ -1,0 +1,16 @@
+# 배포에 필요 없는 것은 올리지 않는다. 원자료는 수백 GB 급이다.
+data/
+notebooks/
+docs/
+scripts/
+experiments/
+*.parquet
+*.tif
+*.csv
+__pycache__/
+.venv/
+
+# 화면과 에이전트에 필요한 것만 남긴다
+!web/
+!api/
+!src/agent/

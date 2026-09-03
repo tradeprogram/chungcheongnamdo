@@ -181,14 +181,51 @@ async function askAgent(text) {
       : done && done.llm === "error" ? "LLM 실패 · 화면 자료로 답변"
       : "답변 완료";
   } catch (err) {
+    // 스트리밍이 없는 환경이 있다. 배포 런타임이 응답을 흘려보내지 못하면
+    // 채팅이 통째로 죽는데, 답변 자체는 단발 엔드포인트로도 똑같이 나온다.
     view.reset();
-    view.append("에이전트 서버에 닿지 못했습니다. python scripts/serve_agent.py 로 실행하면 "
-      + "채팅이 붙습니다. 지도와 판독 결과는 서버 없이도 그대로 동작합니다.");
+    const ok = await askAgentOnce(text, view);
+    if (!ok) {
+      view.append("에이전트 서버에 닿지 못했습니다. 로컬에서는 python scripts/serve_agent.py 로 "
+        + "실행하면 채팅이 붙습니다. 지도와 판독 결과는 서버 없이도 그대로 동작합니다.");
+      agentStatus.textContent = `연결 실패 · ${String(err.message).slice(0, 40)}`;
+    }
     view.finish();
-    agentStatus.textContent = `연결 실패 · ${String(err.message).slice(0, 40)}`;
   } finally {
     clearInterval(agentTimer);
     setAgentBusy(false);
+  }
+}
+
+// 스트리밍이 안 되는 환경을 위한 경로. 한 번에 받아 그대로 채운다.
+async function askAgentOnce(text, view) {
+  try {
+    const res = await fetch(AGENT_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: text,
+        context: agentContext(),
+        history: agentHistory.slice(-8),
+      }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (!data.answer) return false;
+    view.setMeta({
+      actions: data.actions,
+      evidence: data.evidence,
+      tool_trace: data.tool_trace,
+      suggested: data.suggested,
+    });
+    view.append(data.answer);
+    agentStatus.textContent =
+      data.llm === "ok" && data.model ? data.model
+      : data.llm === "no_key" ? "화면 자료 기반 (LLM 키 없음)"
+      : "화면 자료로 답변";
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -218,7 +255,12 @@ function beginAssistantMessage() {
     finish() {
       wrap.classList.remove("agent-typing");
       agentHistory.push({ role: "assistant", text });
-      renderMessageExtras(extra, meta);
+      renderMessageExtras(extra, {
+        evidence: meta.evidence,
+        trace: meta.tool_trace || meta.trace,
+        actions: meta.actions,
+        suggested: meta.suggested,
+      });
       agentBody.scrollTop = agentBody.scrollHeight;
     },
   };
