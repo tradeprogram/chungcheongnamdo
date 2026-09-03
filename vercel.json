@@ -2,10 +2,21 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "web",
   "rewrites": [
-    { "source": "/ai/chat", "destination": "/api/chat" }
+    {
+      "source": "/ai/chat/stream",
+      "destination": "/api/chat_stream"
+    },
+    {
+      "source": "/ai/chat",
+      "destination": "/api/chat"
+    }
   ],
   "functions": {
     "api/chat.py": {
+      "includeFiles": "web/data/**",
+      "maxDuration": 60
+    },
+    "api/chat_stream.py": {
       "includeFiles": "web/data/**",
       "maxDuration": 60
     }
@@ -13,15 +24,30 @@
   "headers": [
     {
       "source": "/(app|agent).js",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
     },
     {
       "source": "/index.html",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
     },
     {
       "source": "/data/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
     }
   ]
 }
