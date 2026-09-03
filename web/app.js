@@ -274,10 +274,10 @@ async function maybeLoadParcels() {
 
 function renderStats() {
   el("stats").innerHTML = `
-    <div><b>${stats.n_passes}</b><span>누적 관측</span></div>
-    <div><b>${stats.n_storms}</b><span>호우 사건</span></div>
-    <div class="hl"><b>${stats.pct_grade_a}%</b><span>적기 관측률</span></div>
-    <div><b>${stats.n_missed}</b><span>미관측 사건</span></div>`;
+    <div title="2017년 이후 충남 전역을 80% 이상 덮은 Sentinel-1 통과 횟수"><b>${stats.n_passes}</b><span>누적 관측</span></div>
+    <div title="일강수 30mm 또는 3일 누적 50mm 이상으로 추출한 호우 사건 수"><b>${stats.n_storms}</b><span>호우 사건</span></div>
+    <div class="hl" title="최대 강수 후 48시간 이내에 관측된 사건의 비율 (등급 A). 나머지는 관측이 늦었거나 촬영되지 않았다"><b>${stats.pct_grade_a}%</b><span>적기 관측률</span></div>
+    <div title="충남 전역을 덮는 관측이 한 번도 없었던 사건 수"><b>${stats.n_missed}</b><span>미관측 사건</span></div>`;
   el("archive-hint").textContent = `분석 기간 ${stats.period} · 최종 갱신 ${stats.generated_at}`;
 }
 
@@ -571,7 +571,11 @@ function showEmd(p) {
     stat("도내 순위", p.rank == null ? "-" : `${p.rank} / ${emdIndex.length || "-"}`) +
     (p.read_pct != null ? stat("필지 판독률", `${p.read_pct}%`) : "") +
     `<p class="hint">다년 침수 빈도는 강우 관측에서 해당 읍면동 농경지가 침수 후보로
-     판정된 평균 비율입니다. 축척을 확대하면 개별 필지를 확인할 수 있습니다.</p>`;
+     판정된 평균 비율입니다. 축척을 확대하면 개별 필지를 확인할 수 있습니다.</p>
+     <p class="hint caution"><b>순위를 그대로 투자 우선순위로 쓰기에는 이릅니다.</b>
+     273개 읍면동의 침수 빈도는 6.7%에서 19.6% 사이(중앙값 12.0%)로 최고와 최저의 차이가
+     약 2.9배에 그칩니다. 관측이 누적될수록 근거가 강해지는 지표이며, 현 단계에서는
+     현장 확인 대상을 좁히는 참고 자료로 쓰는 것이 적절합니다.</p>`;
 }
 
 function showParcel(p) {
