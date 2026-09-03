@@ -70,23 +70,34 @@ def main() -> None:
     slope = terrain["slope"].to_numpy()
     print(f"경사 {STEEP_DEG:.0f}도 이하 필지 {(slope < STEEP_DEG).mean()*100:.1f}%")
 
-    index_cache: dict[tuple[int, int], object] = {}
-    frames = []
-    for event_id in EVENTS:
-        found = raster_for(event_id)
+    # 인덱스 하나가 격자 크기만큼의 배열이다 (20m 에서 830MB, 10m 에서 그 4배).
+    # 모양별로 캐시에 쌓아 두면 서로 다른 격자가 섞였을 때 동시에 여러 개를 들고
+    # 있게 되고, 실제로 그 조합에서 MemoryError 로 죽은 적이 있다.
+    # 같은 모양이 이어지면 재사용하고, 바뀌면 이전 것을 버린다.
+    import rasterio
+
+    def shape_of(path):
+        with rasterio.open(path) as src:
+            return (src.height, src.width)
+
+    # 같은 격자끼리 붙여 인덱스 재생성 횟수를 줄인다
+    found_all = [(e, raster_for(e)) for e in EVENTS]
+    for event_id, found in found_all:
         if not found:
             print(f"[skip] {event_id} 래스터 없음")
-            continue
-        path, scale = found
+    todo = [(e, f[0], f[1]) for e, f in found_all if f]
+    todo.sort(key=lambda t: shape_of(t[1]))
 
-        import rasterio
-        with rasterio.open(path) as src:
-            shape = (src.height, src.width)
-        if shape not in index_cache:
+    index, index_shape = None, None
+    frames = []
+    for event_id, path, scale in todo:
+        shape = shape_of(path)
+        if shape != index_shape:
+            index = None  # 먼저 버리고 만든다. 두 개를 동시에 들지 않는다
             print(f"  인덱스 래스터화 {shape} ({scale}m)")
-            index_cache[shape] = zonal.build_index(path, parcels)
+            index, index_shape = zonal.build_index(path, parcels), shape
 
-        stats = zonal.parcel_stats_v2(path, parcels, index=index_cache[shape])
+        stats = zonal.parcel_stats_v2(path, parcels, index=index)
         stats["event_id"] = event_id
         stats["scale_m"] = scale
         stats["slope"] = slope

@@ -30,11 +30,16 @@ OUT_DIR = REPO_ROOT / "data" / "processed" / "z10"
 SCALE_M = 10
 TILE_DEG = 0.12  # 10m 에서 요청당 크기가 상한을 넘지 않도록 20m 때보다 잘게 쓴다
 
-# 화면에 쓰는 3개 사건만 10m 로 다시 만든다
+# 화면이 쓰는 사건 전부. 일부만 10m 로 바꾸면 안 된다 —
+# 필지 상세는 화소 수를 하나만 표시하므로, 사건마다 해상도가 다르면
+# 20m 사건의 값에 10m 의 화소 수가 붙어 근거를 잘못 말하게 된다.
 EVENTS = [
     ("o134_2025-07-19", "2025-07-19", 134, "C", None),
     ("o127_2025-07-24", "2025-07-24", 127, "A", [2021, 2022, 2023, 2024]),
+    ("o127_2024-07-17", "2024-07-17", 127, "A", [2021, 2022, 2023, 2025]),
     ("o127_2023-07-23", "2023-07-23", 127, "A", [2021, 2022, 2024]),
+    ("o127_2022-07-16", "2022-07-16", 127, "A", [2021, 2023, 2024]),
+    ("o127_2021-07-21", "2021-07-21", 127, "A", [2022, 2023, 2024]),
 ]
 
 
@@ -59,6 +64,9 @@ def z_image(aoi, date_kst: str, orbit: int, platform: str, base_years: list[int]
 def main() -> None:
     gee.init()
     aoi = gee.chungnam_aoi()
+    import geopandas as gpd
+    aoi_geom = gpd.read_file(
+        REPO_ROOT / "data" / "aoi" / "chungnam_boundary.geojson").geometry.union_all()
     bounds = tuple(gpd.read_file(REPO_ROOT / "data" / "aoi" / "chungnam_boundary.geojson").total_bounds)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -71,7 +79,7 @@ def main() -> None:
         export.download_image(
             z_image(aoi, date_kst, orbit, platform, base_years),
             bounds, out, scale=SCALE_M, tile_deg=TILE_DEG, crs="EPSG:5179",
-            band_names=["zvv", "zvh"],
+            band_names=["zvv", "zvh"], aoi_geom=aoi_geom,
         )
 
 
