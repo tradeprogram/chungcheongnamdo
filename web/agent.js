@@ -158,14 +158,27 @@ async function askAgent(text) {
       "채팅이 붙습니다. 지도와 판독 결과는 서버 없이도 그대로 동작합니다.");
     agentStatus.textContent = `연결 실패 · ${String(err.message).slice(0, 40)}`;
   } finally {
+    clearInterval(agentTimer);
     setAgentBusy(false);
   }
 }
 
+let agentTimer = null;
+
+// 응답이 20~30초 걸린다. 그동안 한 문구만 떠 있으면 멈춘 것처럼 보이므로
+// 무엇을 기다리는지와 경과 시간을 같이 보여준다. 근거 수집은 순식간이고
+// 오래 걸리는 쪽은 LLM이라, 그렇게 적어야 사실과 맞다.
 function setAgentBusy(busy) {
   agentSend.disabled = busy;
   agentInput.disabled = busy;
-  if (busy) agentStatus.textContent = "근거를 모으는 중";
+  clearInterval(agentTimer);
+  if (!busy) return;
+  const t0 = Date.now();
+  agentStatus.textContent = "근거를 모으는 중";
+  agentTimer = setInterval(() => {
+    const sec = Math.round((Date.now() - t0) / 1000);
+    agentStatus.textContent = sec < 2 ? "근거를 모으는 중" : `답변 작성 중 · ${sec}초`;
+  }, 500);
 }
 
 function addAgentMessage(role, text, meta = {}) {

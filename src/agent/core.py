@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -49,7 +50,9 @@ SYSTEM_PROMPT = """너는 '물길잡이.agent'다. 충청남도 농경지 침수
 - 촬영 확률을 말할 때는 기준 기간을 밝힌다. 최근 3년은 orbit 127이 67%, orbit 134가 37%이고, 전체 기간은 87%와 63%다.
 - 관측 지연이 결과를 가른다는 점을 근거로 설명한다. 2025년 7월 같은 호우에서 07-19 관측(지연 40시간, 등급 A)은 논 25.67%, 07-24 관측(지연 172시간, 등급 C)은 1.42%였다.
 - 주어진 근거(context)에 없는 수치는 만들지 말고 '현재 화면 자료로는 확인 불가'라고 말한다.
-- 답변은 담당자가 바로 행동할 수 있게 쓴다. 판정, 근거 수치, 한계, 다음에 볼 화면을 함께 제시한다.
+- 답변은 담당자가 바로 행동할 수 있게 쓴다. 판정, 근거 수치, 한계를 함께 제시한다.
+- **화면 이동을 안내할 때는 available_actions 에 있는 것만 말한다.** 이 시스템의 화면은 호우 사건 목록, 지역(읍면동) 순위, 지도와 필지 상세, 배경 전환이 전부다. '현장조사 등록', '피해 신고', '보고서 출력' 같은 화면은 **없다.** 없는 화면으로 안내하면 담당자가 찾다가 시스템을 불신하게 된다.
+- 현장조사가 필요하다고 말할 때는 이 시스템 밖의 일이라고 밝힌다. 이 시스템은 조사 대상을 좁혀 줄 뿐 조사를 접수하지 않는다.
 """
 
 
@@ -65,13 +68,20 @@ def handle_chat(payload: dict) -> dict:
     if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
         answer, llm_state = local_answer(agent), "no_key"
     else:
-        try:
-            llm = call_gemini(payload, agent)
-            answer = llm.get("answer") or local_answer(agent)
-            model, llm_state = llm.get("model"), "ok"
-        except Exception as exc:  # noqa: BLE001 — 실패해도 근거 기반 답은 낸다
+        answer, llm_state = None, "error"
+        for attempt in range(2):
+            try:
+                llm = call_gemini(payload, agent)
+                answer = llm.get("answer")
+                if answer:
+                    model, llm_state = llm.get("model"), "ok"
+                    break
+            except Exception as exc:  # noqa: BLE001 — 실패해도 근거 기반 답은 낸다
+                error = {"type": type(exc).__name__, "message": str(exc)[:400]}
+                if attempt == 0:
+                    time.sleep(1.2)  # 연속 호출에서 간헐적으로 끊긴다
+        if not answer:
             answer, llm_state = local_answer(agent), "error"
-            error = {"type": type(exc).__name__, "message": str(exc)[:400]}
 
     out = {
         "answer": answer,
@@ -327,6 +337,13 @@ def overlay_for(storm: dict):
     return None
 
 
+def freq_provenance() -> str:
+    meta = read_json(DATA / "sus_meta.json") or {}
+    n = meta.get("wet_obs_max")
+    return (f"다년 침수 빈도는 3일 누적강우 40mm 이상인 젖은 관측 {n}건을 겹쳐 산출한 값이다. "
+            "아카이브의 호우 77건이나 위성 통과 427회 전체로 계산한 값이 아니다.")
+
+
 def summarize_region(question: str, client: dict):
     feats = (read_json(DATA / "emd.geojson") or {}).get("features") or []
     rows = [f["properties"] for f in feats]
@@ -359,6 +376,7 @@ def summarize_region(question: str, client: dict):
         "rank": hit.get("rank"),
         "total": total,
         "read_pct": hit.get("read_pct"),
+        "빈도_출처": freq_provenance(),
     }
 
 
@@ -375,6 +393,7 @@ def summarize_ranking(limit: int = 5):
         "top": top,
         "n_ranked": len(rows),
         "spread": f"{hi * 100:.1f}% ~ {lo * 100:.1f}% (약 {hi / lo:.1f}배)",
+        "빈도_출처": freq_provenance(),
         "caveat": "이 정도 폭으로 투자 우선순위를 그대로 정하기에는 이릅니다. 관측이 쌓일수록 근거가 강해지는 종류의 지표입니다.",
     }
 
@@ -454,14 +473,25 @@ def call_gemini(payload: dict, agent: dict) -> dict:
         "user_question": str(payload.get("message", ""))[:3000],
         "agent_context": agent["context"],
         "tool_trace": agent["tool_trace"],
+        # 화면 이동은 여기 있는 것만 말할 수 있다. 목록을 주지 않으면 모델이
+        # '현장조사 등록 화면' 같은 없는 화면을 만들어 안내한다.
+        "available_actions": [a["label"] for a in agent["actions"]],
         "recent_history": (payload.get("history") or [])[-8:],
-        "output_format": "한국어 순수 텍스트. 3~5개 문단, 400~700자. 마크다운 기호 금지. "
-                         "근거로 쓴 수치는 문장 안에 그대로 적는다.",
+        "output_format": "한국어 순수 텍스트만 쓴다(영어 단어 섞지 않는다). 3~4개 문단, 400~700자. "
+                         "마크다운 기호 금지. '판정:', '근거 수치:' 같은 고정 머리말 없이 "
+                         "설명이 흐르듯 이어지게 쓴다. 근거로 쓴 수치는 문장 안에 그대로 적는다.",
     }
     body = {
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 2048},
+        "generationConfig": {
+            "temperature": 0.4,
+            # 사고 토큰이 출력 한도를 함께 먹는다. 2048 로는 finishReason=MAX_TOKENS 가 나며
+            # 답이 문장 중간에서 잘렸고, 사고 과정이 그대로 답변에 섞여 나오기도 했다.
+            "maxOutputTokens": 4096,
+            # thinkingBudget=0 은 이 모델에서 400 으로 거부된다. 최소한으로 줄인다.
+            "thinkingConfig": {"thinkingBudget": 128},
+        },
     }
     req = Request(
         f"{GEMINI_BASE}/models/{model}:generateContent",
@@ -469,15 +499,24 @@ def call_gemini(payload: dict, agent: dict) -> dict:
         headers={"content-type": "application/json", "x-goog-api-key": api_key},
         method="POST",
     )
-    with urlopen(req, timeout=45) as res:
+    with urlopen(req, timeout=60) as res:
         data = json.loads(res.read().decode("utf-8"))
+    cand = (data.get("candidates") or [{}])[0]
+    # 잘린 답변은 완성된 결정적 답변보다 나쁘다. 근거를 대다 만 문장이 되기 때문이다.
+    if cand.get("finishReason") == "MAX_TOKENS":
+        raise RuntimeError("응답이 출력 한도에서 잘렸습니다 (MAX_TOKENS)")
     return {"answer": extract_text(data), "model": model}
 
 
 def extract_text(data: dict) -> str:
+    """응답 본문만 꺼낸다.
+
+    사고 과정이 담긴 part 를 함께 이어 붙이면 "Let's check character length..." 같은
+    모델의 혼잣말이 그대로 답변으로 나간다. 실제로 화면에 그렇게 표시된 적이 있다.
+    """
     for cand in data.get("candidates") or []:
         parts = (cand.get("content") or {}).get("parts") or []
-        text = "".join(p.get("text", "") for p in parts).strip()
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
         if text:
             return text
     return ""
