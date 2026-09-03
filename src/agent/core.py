@@ -266,11 +266,26 @@ def summarize_storm(question: str, client: dict):
     if not storms:
         return None
     target = None
-    m = re.search(r"(20\d\d)[-. /]?(\d{1,2})[-. /]?(\d{1,2})?", question)
+    m = re.search(r"(20\d\d)[-.\s/년]*(\d{1,2})[-.\s/월]*(\d{1,2})?", question)
     if m:
-        prefix = f"{m.group(1)}-{int(m.group(2)):02d}"
-        cands = [s for s in storms if str(s.get("peak_date", "")).startswith(prefix)]
-        target = cands[0] if cands else None
+        year, month, day = m.group(1), int(m.group(2)), m.group(3)
+        # 일까지 말했으면 그 날짜를 쓴다. 월만 보고 그 달의 첫 사건을 집으면
+        # 2023-07-23 을 물었는데 07-14 를 설명하게 된다.
+        if day:
+            exact = f"{year}-{month:02d}-{int(day):02d}"
+            target = next((s for s in storms if s.get("peak_date") == exact), None)
+            if target is None:
+                # 관측일로 물어보는 경우도 있다 (07-19 는 07-17 호우의 관측이다)
+                target = next((s for s in storms if str(s.get("obs_kst", ""))[:10] == exact), None)
+            if target is None:
+                # 사건 기간 안에 드는 날짜인지 본다
+                target = next((s for s in storms
+                               if s.get("start") and s["start"] <= exact <= s.get("end", "")), None)
+        if target is None:
+            prefix = f"{year}-{month:02d}"
+            cands = [s for s in storms if str(s.get("peak_date", "")).startswith(prefix)]
+            # 같은 달에 여럿이면 가장 큰 사건을 고른다
+            target = max(cands, key=lambda s: s.get("total_mm") or 0) if cands else None
     if target is None and client.get("selected_storm"):
         target = next((s for s in storms if s["storm_id"] == client["selected_storm"]), None)
     if target is None:
@@ -502,8 +517,8 @@ def local_answer(agent: dict) -> str:
         head = f"{s['peak_date']} 호우는 등급 {s['grade']}입니다. {s['verdict']}"
         para.append(head)
         if s["grade"] == "C" or not s["observed"]:
-            para.append("이 사건은 판독 지도를 만들지 않습니다. 근거가 없는 지도를 내지 않는 것이 "
-                        "원칙이라 화면에서도 농경지 구분만 표시되며, 현장조사로 전환해야 합니다.")
+            para.append("화면에서도 농경지 구분만 표시됩니다. 근거가 없는 지도를 내지 않는 것이 "
+                        "원칙이므로, 이 사건은 현장조사로 전환해야 합니다.")
 
     ev = ctx.get("events")
     if ev and not s:

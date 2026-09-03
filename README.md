@@ -57,13 +57,13 @@ docs/         전략·데이터·검증 문서, 제출물 (90_submission/)
 src/rs/       GEE 헬퍼, Sentinel-1 침수 판독, 카탈로그, 관측 가능성 판정
 src/features/ 팜맵 필지, zonal 집계, 지형·강우 covariate, 취약도
 src/models/   폐기한 사전예측 모델 (기록으로 남김)
+src/agent/    질의 응답 에이전트 — 화면 자료로 근거를 만들고 그 위에서만 답한다
 notebooks/    아카이브·라벨·타일·화면 자료 생성, 실험, 검산
-web/          MapLibre 정적 뷰어 (백엔드 없음, 사전 생성 파일만 읽음)
-scripts/      야간 재생성 체인
+web/          MapLibre 뷰어 — 지도는 사전 생성 파일만 읽는다. 채팅만 서버를 쓴다
+scripts/      야간 재생성 체인, 화면+에이전트 서버
 ```
 
-`src/decision`, `src/api`, `src/agent` 는 폐기한 원안의 잔재다.
-현재 파이프라인은 이들을 쓰지 않는다.
+`src/decision` 과 `src/api` 는 폐기한 원안의 잔재다. 현재 파이프라인은 쓰지 않는다.
 
 ## 재현
 
@@ -81,11 +81,25 @@ python notebooks/check_page_count.py         # 3페이지 제한 실측
 GEE 프로젝트 ID는 `EE_PROJECT` 환경변수로 지정한다.
 팜맵 API 키는 `.env` 에 두며 `.env.example` 을 참고한다.
 
-화면은 정적 파일만 쓴다.
+화면과 에이전트를 한 프로세스로 띄운다.
 
 ```bash
-python -m http.server 5173 --directory web
+python scripts/serve_agent.py
 ```
+
+`GEMINI_API_KEY` 가 있으면 gemini-3.6-flash 가 답을 쓰고, 없으면 같은 근거로
+`local_answer()` 가 답한다. **키가 없어도 채팅은 동작한다.** 지도만 볼 때는
+정적 서버로도 충분하다 (`python -m http.server 5173 --directory web`).
+
+## 에이전트
+
+질문에서 도구를 고르고 `web/data` 의 사전 생성 파일로 근거를 먼저 만든 뒤,
+그 근거만 LLM 에 넘긴다. LLM 은 새 수치를 만들 수 없고 있는 수치를 읽어 설명한다.
+답변에는 근거 카드와 도구 실행 기록이 함께 붙고, "07-19 관측 보기" 같은 단추로
+지도를 직접 움직인다.
+
+화면과 같은 규칙을 지킨다 — 등급 C 사건은 판독 지도를 말하지 않고, 관측이 없는
+필지는 0%가 아니라 관측 부족이며, 예측은 하지 않는다.
 
 ## 데이터
 
