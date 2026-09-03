@@ -584,11 +584,26 @@ function showParcel(p) {
   html += stat("관측 횟수", `${p.wet_n_obs ?? "-"} 회`);
   // 사건 목록은 events.json 에서 끌어온다. 화면에 사건을 추가할 때
   // 여기를 같이 고치는 것을 잊으면 필지 상세만 옛 세 건에 멈춘다.
-  html += `<div class="sep">사건별 침수율</div>`;
+  // 표본 크기를 숨기지 않는다.
+  // 팜맵 필지는 평균 1,500 m² 라 20m 격자에서 화소가 몇 개 안 나온다. 실제로
+  // 면적 집계 필지의 절반이 화소 4개 이하이고 11.9%는 화소 1개다. 화소 2개에서
+  // 나온 값을 "50.0%" 로 적으면 필지 전체를 재서 얻은 비율처럼 읽힌다.
+  //   화소 1개  -> 비율이 존재할 수 없다. 침수 여부로만 적는다
+  //   화소 10개 이하 -> 몇 개 중 몇 개인지 같이 적는다
+  //   그 이상   -> 비율로 적는다
+  const npx = p.mth === 1 ? 1 : (p.npx || 0);
+  const single = npx <= 1;
+  const coarse = npx > 1 && npx <= 10;
+  const readValue = (v) => {
+    if (v === null || v === undefined) return "판독값 없음";
+    if (single) return v >= 0.5 ? "침수 판정" : "비침수 판정";
+    if (coarse) return `화소 ${npx}개 중 ${Math.round(v * npx)}개 (${(v * 100).toFixed(0)}%)`;
+    return pct(v);
+  };
+  html += `<div class="sep">사건별 ${single ? "판정" : "침수율"}</div>`;
   for (const [id, field] of Object.entries(PARCEL_FIELD)) {
     const ev = events.find((x) => x.id === id);
-    const label = ev ? ev.label : id;
-    html += stat(label, pct(p[field]));
+    html += stat(ev ? ev.label : id, readValue(p[field]));
   }
   const basisText = {
     0: `면적 집계 · 유효 화소 ${p.npx ?? "-"}개`,
@@ -598,9 +613,13 @@ function showParcel(p) {
   html += `<div class="sep">판독 근거</div>`;
   html += stat("집계 방식", basisText);
   html += stat("지형 신뢰도", p.stp === 1 ? "낮음 (경사 20° 초과)" : "정상");
-  html += `<p class="hint">침수율은 필지 내에서 이중반사 지표(z&gt;2)로 판정된 화소의 비율입니다.
-    필지가 20m 격자에 화소를 배정받지 못한 경우 폴리곤 내부의 대표점 한 곳을 읽으며,
-    이때의 값은 면적 비율이 아니라 단일 표본이므로 근거의 등급이 다릅니다.</p>`;
+  html += `<p class="hint">침수 여부는 벼 줄기와 수면의 <b>이중반사</b>로 후방산란이 평년보다
+    뚜렷하게 커졌는지로 판정합니다(표준화 편차 z&gt;2). ${single
+      ? `이 필지는 화소를 하나만 얻어 비율이 성립하지 않으므로 침수 여부로만 제시합니다.
+         화소가 많은 필지와 같은 무게로 쓰면 안 됩니다.`
+      : coarse
+      ? `이 필지는 화소가 ${npx}개뿐이라 비율의 단위가 큽니다. 몇 개 중 몇 개인지를 함께 적습니다.`
+      : `필지 안의 화소 ${npx}개 중 그렇게 판정된 화소의 비율입니다.`}</p>`;
   el("detail").innerHTML = html;
 }
 
